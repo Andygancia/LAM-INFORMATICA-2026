@@ -99,6 +99,37 @@ class NoiseTrader(Trader):
         return None
 
 
+class SmartTrader(Trader):
+    """Trader razionale e contrarian, ispirato alla descrizione degli "smart
+    trader" nel LAM di riferimento (Cattaneo & Bartoli, 2025) e alla
+    disciplina descritta in "Trading in the Zone" di Mark Douglas: compra
+    quando il prezzo e' sceso sotto la sua media recente e vende quando e'
+    salito sopra, ignorando il rumore di brevissimo periodo a cui invece
+    reagisce il Chartist."""
+
+    tipo = "Smart"
+    probabilita_essere_attivo = 0.35
+    finestra_media = 20
+    soglia_deviazione = 0.03
+
+    def attivita_trader(self):
+        return random.random() < self.probabilita_essere_attivo
+
+    def decide_ordine(self, prezzo_corrente, storico_prezzi, notizia):
+        finestra = storico_prezzi[-self.finestra_media :]
+        if len(finestra) < 2:
+            return None
+        media_riferimento = sum(finestra) / len(finestra)
+        if media_riferimento <= 0:
+            return None
+        deviazione = (prezzo_corrente - media_riferimento) / media_riferimento
+        if deviazione < -self.soglia_deviazione and self.cash > 0:
+            return "compra"
+        if deviazione > self.soglia_deviazione and self.bitcoin > 0:
+            return "vendi"
+        return None
+
+
 DEFAULT_PARAMS = {
     "numero_trader": 100,
     "bitcoin_totali": 80000,
@@ -106,16 +137,23 @@ DEFAULT_PARAMS = {
     "prezzo_iniziale": 5.0,
     "numero_giorni": 120,
     "beta": 1.0,
-    "percentuale_random": 60,
+    "percentuale_random": 50,
     "percentuale_noise": 15,
-    "percentuale_chartist": 25,
+    "percentuale_chartist": 20,
+    "percentuale_smart": 15,
     "trader_random_attivo": True,
     "trader_noise_attivo": True,
     "trader_chartist_attivo": True,
+    "trader_smart_attivo": True,
     "prob_notizia_positiva": 10,
     "prob_notizia_neutra": 80,
     "prob_notizia_negativa": 10,
     "impatto_domanda_offerta": 0.08,
+    "spread_bid_ask": 0.4,
+    "mining_attivo": False,
+    "mining_giornaliero": 2,
+    "ingresso_nuovi_trader_attivo": False,
+    "tasso_ingresso_giornaliero": 1,
     "seed": 42,
 }
 
@@ -130,18 +168,43 @@ LIMITI_PARAMETRI = {
     "bitcoin_totali": (0, 1_000_000_000_000),
     "cash_totale": (0, 1_000_000_000_000),
     "impatto_domanda_offerta": (0, 1),
+    "spread_bid_ask": (0, 20),
+    "mining_giornaliero": (0, 1_000_000),
+    "tasso_ingresso_giornaliero": (0, 200),
     "seed": (0, 2**32 - 1),
 }
 
-CLASSI_TRADER = ("Random", "Noise", "Chartist")
+CLASSI_TRADER = ("Random", "Noise", "Chartist", "Smart")
 COLORI_CLASSI = {
     "Random": "#00c48c",
     "Noise": "#f3b33d",
     "Chartist": "#5f8cff",
-    "Smart": "#5f8cff",
+    "Smart": "#c9a4ff",
+    "Normal": "#8fa19b",
     "Dumb": "#ff5d57",
 }
 FRAZIONE_SCAMBIO = 0.10
+
+# Gruppo psicologico a cui appartiene ciascuna classe di trader, usato per il
+# confronto "Smart vs Normal vs Dumb" (terminologia ripresa dal LAM di
+# Cattaneo & Bartoli, 2025): i Chartist e i Noise trader inseguono in modo
+# impulsivo il trend o le notizie (Dumb), i Random trader fanno da "rumore
+# di fondo" neutro (Normal), e i nuovi SmartTrader sono i soli contrarian
+# disciplinati (Smart).
+GRUPPO_PSICOLOGICO = {
+    "Random": "Normal",
+    "Noise": "Dumb",
+    "Chartist": "Dumb",
+    "Smart": "Smart",
+}
+
+# Valori critici del test tau1 di Dickey-Fuller (ipotesi nulla: random walk
+# senza drift), le stesse soglie citate nel paper di riferimento (Cocco,
+# Concas, Marchesi, 2017, Sez. 5).
+VALORI_CRITICI_ADF = {"1%": -2.58, "5%": -1.95, "10%": -1.62}
+
+LIMITE_CARICO_MULTIRUN = 3_000_000
+MASSIMO_RUN_MULTIRUN = 200
 
 
 def ricchezza_proporzionale_pareto(numero_trader, ricchezza_totale, beta):
@@ -179,7 +242,12 @@ def percentuali_trader(params):
         if parametro_attivo(params, "trader_chartist_attivo")
         else 0
     )
-    return random_pct / 100, noise_pct / 100, chartist_pct / 100
+    smart_pct = (
+        leggi_percentuale(params, "percentuale_smart")
+        if parametro_attivo(params, "trader_smart_attivo")
+        else 0
+    )
+    return random_pct / 100, noise_pct / 100, chartist_pct / 100, smart_pct / 100
 
 
 def valida_percentuali(params):
@@ -190,6 +258,8 @@ def valida_percentuali(params):
         chiavi_trader_attive.append("percentuale_noise")
     if parametro_attivo(params, "trader_chartist_attivo"):
         chiavi_trader_attive.append("percentuale_chartist")
+    if parametro_attivo(params, "trader_smart_attivo"):
+        chiavi_trader_attive.append("percentuale_smart")
 
     valida_somma_percentuali(
         params,
@@ -229,14 +299,19 @@ def crea_popolazione_trader(params):
         numero_trader, float(params["cash_totale"]), beta
     )
 
-    p_random, p_noise, _ = percentuali_trader(params)
+    p_random, p_noise, p_chartist, _p_smart = percentuali_trader(params)
+    soglia_random = p_random
+    soglia_noise = soglia_random + p_noise
+    soglia_chartist = soglia_noise + p_chartist
+    # Chi non rientra nelle prime tre soglie diventa Smart: cosi' la somma
+    # copre sempre l'intero intervallo [0, 1) anche con arrotondamenti.
     traders = []
 
     for i in range(numero_trader):
         scelta_tipo = random.random()
-        if scelta_tipo < p_random:
+        if scelta_tipo < soglia_random:
             trader = RandomTrader(i + 1, cash_assegnato[i], bitcoin_assegnati[i])
-        elif scelta_tipo < p_random + p_noise:
+        elif scelta_tipo < soglia_noise:
             trader = NoiseTrader(
                 i + 1,
                 cash_assegnato[i],
@@ -244,8 +319,10 @@ def crea_popolazione_trader(params):
                 sensibilita_notizie=random.uniform(0.50, 0.90),
                 probabilita_panico=random.uniform(0.05, 0.20),
             )
-        else:
+        elif scelta_tipo < soglia_chartist:
             trader = Chartist(i + 1, cash_assegnato[i], bitcoin_assegnati[i])
+        else:
+            trader = SmartTrader(i + 1, cash_assegnato[i], bitcoin_assegnati[i])
         traders.append(trader)
 
     return traders
@@ -273,17 +350,118 @@ def calcola_gini(valori):
     return float((np.sum((2 * indice - n - 1) * valori)) / (n * np.sum(valori)))
 
 
-def esegui_ordine(trader, ordine, prezzo_corrente):
+def calcola_log_rendimenti(prezzi):
+    prezzi = np.clip(np.array(prezzi, dtype=float), 1e-9, None)
+    if len(prezzi) < 2:
+        return np.array([])
+    return np.diff(np.log(prezzi))
+
+
+def statistiche_rendimenti(rendimenti):
+    """Media, deviazione standard, asimmetria e curtosi (di Pearson, quindi
+    con la normale a quota 3, come nella Tabella 3 del paper di riferimento)
+    dei log-rendimenti giornalieri."""
+    if len(rendimenti) == 0:
+        return {"media": 0.0, "deviazione_standard": 0.0, "asimmetria": 0.0, "curtosi": 0.0}
+    media = float(np.mean(rendimenti))
+    dev = float(np.std(rendimenti))
+    if dev == 0:
+        asimmetria = 0.0
+        curtosi = 0.0
+    else:
+        z = (np.array(rendimenti) - media) / dev
+        asimmetria = float(np.mean(z**3))
+        curtosi = float(np.mean(z**4))
+    return {
+        "media": round(media, 6),
+        "deviazione_standard": round(dev, 6),
+        "asimmetria": round(asimmetria, 4),
+        "curtosi": round(curtosi, 4),
+    }
+
+
+def autocorrelazione(serie, max_lag=20):
+    serie = np.array(serie, dtype=float)
+    n = len(serie)
+    if n < 3:
+        return [0.0] * (max_lag + 1)
+    max_lag = min(max_lag, n - 2)
+    media = serie.mean()
+    varianza = float(np.sum((serie - media) ** 2))
+    risultati = []
+    for lag in range(0, max_lag + 1):
+        if varianza == 0:
+            risultati.append(0.0)
+            continue
+        cov = float(np.sum((serie[: n - lag] - media) * (serie[lag:] - media)))
+        risultati.append(cov / varianza)
+    return risultati
+
+
+def test_adf_senza_drift(serie, lag=1):
+    """Test di Dickey-Fuller aumentato con un ritardo, ipotesi nulla H0:
+    radice unitaria (random walk senza drift) - stessa formulazione e stessi
+    valori critici (tau1) usati nel paper di riferimento (Sez. 5): la
+    regressione e' Delta y_t = rho * y_(t-1) + phi * Delta y_(t-1) + errore.
+    Implementato con i minimi quadrati di numpy per restare trasparente e
+    senza aggiungere dipendenze esterne (statsmodels)."""
+    y = np.array(serie, dtype=float)
+    n = len(y)
+    if n < lag + 15:
+        return None
+
+    dy = np.diff(y)
+    righe = []
+    dipendente = []
+    for t in range(lag, len(dy)):
+        dipendente.append(dy[t])
+        riga = [y[t]]
+        for i in range(1, lag + 1):
+            riga.append(dy[t - i])
+        righe.append(riga)
+
+    X = np.array(righe, dtype=float)
+    Y = np.array(dipendente, dtype=float)
+    if len(Y) < X.shape[1] + 5:
+        return None
+
+    try:
+        coefficienti, _, _, _ = np.linalg.lstsq(X, Y, rcond=None)
+    except np.linalg.LinAlgError:
+        return None
+
+    residui = Y - X @ coefficienti
+    gradi_liberta = max(len(Y) - X.shape[1], 1)
+    sigma2 = float(np.sum(residui**2) / gradi_liberta)
+    xtx_inv = np.linalg.pinv(X.T @ X)
+    errore_standard_rho = math.sqrt(max(sigma2 * xtx_inv[0, 0], 0.0))
+    rho = float(coefficienti[0])
+    statistica_tau = rho / errore_standard_rho if errore_standard_rho > 0 else 0.0
+
+    return {
+        "statistica_tau": round(statistica_tau, 4),
+        "valori_critici": VALORI_CRITICI_ADF,
+        "rifiuta_ipotesi_random_walk": {
+            livello: statistica_tau < soglia for livello, soglia in VALORI_CRITICI_ADF.items()
+        },
+        "osservazioni": len(Y),
+    }
+
+
+def esegui_ordine(trader, ordine, prezzo_corrente, spread=0.0):
     if prezzo_corrente <= 0:
         return
+    meta_spread = max(spread, 0.0) / 2
     if ordine == "compra" and trader.cash > 0:
+        prezzo_esecuzione = prezzo_corrente * (1 + meta_spread)
         investimento = trader.cash * FRAZIONE_SCAMBIO
         trader.cash -= investimento
-        trader.bitcoin += investimento / prezzo_corrente
+        trader.bitcoin += investimento / prezzo_esecuzione
     elif ordine == "vendi" and trader.bitcoin > 0:
+        prezzo_esecuzione = prezzo_corrente * (1 - meta_spread)
         bitcoin_venduti = trader.bitcoin * FRAZIONE_SCAMBIO
         trader.bitcoin -= bitcoin_venduti
-        trader.cash += bitcoin_venduti * prezzo_corrente
+        trader.cash += bitcoin_venduti * prezzo_esecuzione
 
 
 def aggrega_classi(traders, prezzo):
@@ -293,6 +471,8 @@ def aggrega_classi(traders, prezzo):
     }
     for trader in traders:
         tipo = trader.tipo
+        if tipo not in aggregati:
+            aggregati[tipo] = {"conteggio": 0, "patrimonio": 0.0, "cash": 0.0, "bitcoin": 0.0}
         aggregati[tipo]["conteggio"] += 1
         aggregati[tipo]["patrimonio"] += trader.genera_ricchezza(prezzo)
         aggregati[tipo]["cash"] += trader.cash
@@ -305,13 +485,14 @@ def aggrega_classi(traders, prezzo):
     return aggregati
 
 
-def aggrega_smart_dumb(classi):
+def aggrega_gruppi_psicologici(classi):
     gruppi = {
         "Smart": {"conteggio": 0, "patrimonio": 0.0},
+        "Normal": {"conteggio": 0, "patrimonio": 0.0},
         "Dumb": {"conteggio": 0, "patrimonio": 0.0},
     }
     for tipo, dati in classi.items():
-        gruppo = "Smart" if tipo == "Chartist" else "Dumb"
+        gruppo = GRUPPO_PSICOLOGICO.get(tipo, "Normal")
         gruppi[gruppo]["conteggio"] += dati["conteggio"]
         gruppi[gruppo]["patrimonio"] += dati["patrimonio"]
 
@@ -346,13 +527,13 @@ def rendimento_percentuale(valore, valore_iniziale):
 
 def costruisci_serie(snapshot):
     serie_classi = []
-    serie_smart_dumb = []
+    serie_gruppi = []
     iniziale_classi = snapshot[0]["classi"]
-    iniziale_gruppi = snapshot[0]["smart_dumb"]
+    iniziale_gruppi = snapshot[0]["gruppi_psicologici"]
 
     for record in snapshot:
         classi_arrotondate = arrotonda_aggregati(record["classi"])
-        gruppi_arrotondati = arrotonda_aggregati(record["smart_dumb"])
+        gruppi_arrotondati = arrotonda_aggregati(record["gruppi_psicologici"])
         classi = {}
         for tipo, dati in record["classi"].items():
             classi[tipo] = {
@@ -369,7 +550,7 @@ def costruisci_serie(snapshot):
             }
 
         gruppi = {}
-        for nome, dati in record["smart_dumb"].items():
+        for nome, dati in record["gruppi_psicologici"].items():
             gruppi[nome] = {
                 **gruppi_arrotondati[nome],
                 "rendimento_percentuale": round(
@@ -384,9 +565,9 @@ def costruisci_serie(snapshot):
             }
 
         serie_classi.append({"giorno": record["giorno"], "classi": classi})
-        serie_smart_dumb.append({"giorno": record["giorno"], "gruppi": gruppi})
+        serie_gruppi.append({"giorno": record["giorno"], "gruppi": gruppi})
 
-    return serie_classi, serie_smart_dumb
+    return serie_classi, serie_gruppi
 
 
 def prepara_figura(titolo, asse_y):
@@ -402,6 +583,13 @@ def prepara_figura(titolo, asse_y):
     for spine in ax.spines.values():
         spine.set_color("#1a2a26")
     return fig, ax
+
+
+def _stila_legenda(ax):
+    legenda = ax.legend(facecolor="#0d1513", edgecolor="#1a2a26", fontsize=8)
+    for testo in legenda.get_texts():
+        testo.set_color("#eef7f3")
+    return legenda
 
 
 def figura_to_data_uri(fig):
@@ -424,9 +612,7 @@ def genera_grafico_linee(titolo, asse_y, giorni, serie_per_nome):
             color=COLORI_CLASSI.get(nome, "#eef7f3"),
             linewidth=2.4,
         )
-    legenda = ax.legend(facecolor="#0d1513", edgecolor="#1a2a26", fontsize=8)
-    for testo in legenda.get_texts():
-        testo.set_color("#eef7f3")
+    _stila_legenda(ax)
     return figura_to_data_uri(fig)
 
 
@@ -452,7 +638,106 @@ def genera_grafico_barre(titolo, asse_y, valori_per_nome):
     return figura_to_data_uri(fig)
 
 
-def genera_grafici(serie_classi, serie_smart_dumb):
+def genera_grafico_istogramma_rendimenti(rendimenti):
+    fig, ax = prepara_figura("Istogramma dei log-rendimenti", "Densita'")
+    ax.set_xlabel("Log-rendimento giornaliero")
+    if len(rendimenti) > 0:
+        ax.hist(rendimenti, bins=30, color="#00c48c", alpha=0.75, density=True, edgecolor="#050908")
+        media = float(np.mean(rendimenti))
+        dev = float(np.std(rendimenti))
+        if dev > 0:
+            xs = np.linspace(float(np.min(rendimenti)), float(np.max(rendimenti)), 200)
+            normale = (1 / (dev * math.sqrt(2 * math.pi))) * np.exp(-0.5 * ((xs - media) / dev) ** 2)
+            ax.plot(xs, normale, color="#f3b33d", linewidth=2.2, label="Normale (stessa media/dev.std)")
+            _stila_legenda(ax)
+    return figura_to_data_uri(fig)
+
+
+def genera_grafico_acf(acf_grezzi, acf_assoluti):
+    fig, ax = prepara_figura("Autocorrelazione: rendimenti grezzi vs assoluti", "Autocorrelazione")
+    ax.set_xlabel("Lag (giorni)")
+    lags = list(range(len(acf_grezzi)))
+    larghezza = 0.38
+    ax.bar([l - larghezza / 2 for l in lags], acf_grezzi, width=larghezza, color="#5f8cff", label="Rendimenti grezzi")
+    ax.bar([l + larghezza / 2 for l in lags], acf_assoluti, width=larghezza, color="#f3b33d", label="Rendimenti assoluti")
+    ax.axhline(0, color="#8fa19b", linewidth=0.8)
+    _stila_legenda(ax)
+    return figura_to_data_uri(fig)
+
+
+def genera_grafico_lorenz(ricchezze):
+    fig, ax = prepara_figura("Curva di Lorenz (distribuzione del patrimonio)", "Quota cumulata di patrimonio")
+    ax.set_xlabel("Quota cumulata di trader (dal piu' povero)")
+    valori = np.clip(np.sort(np.array(ricchezze, dtype=float)), 0, None)
+    n = len(valori)
+    ax.plot([0, 1], [0, 1], color="#8fa19b", linewidth=1.4, linestyle="--", label="Uguaglianza perfetta")
+    if n > 0 and valori.sum() > 0:
+        cumulato = np.cumsum(valori) / valori.sum()
+        x = np.arange(1, n + 1) / n
+        ax.plot(
+            np.concatenate([[0], x]),
+            np.concatenate([[0], cumulato]),
+            color="#00c48c",
+            linewidth=2.4,
+            label="Popolazione simulata",
+        )
+    _stila_legenda(ax)
+    return figura_to_data_uri(fig)
+
+
+def genera_grafico_volumi(giorni_lista):
+    fig, ax = prepara_figura("Volumi giornalieri (ordini eseguiti)", "Numero di trader")
+    giorni_idx = [g["giorno"] for g in giorni_lista]
+    compratori = [g["compratori"] for g in giorni_lista]
+    venditori = [-g["venditori"] for g in giorni_lista]
+    ax.bar(giorni_idx, compratori, color="#00c48c", width=0.9, label="Compratori")
+    ax.bar(giorni_idx, venditori, color="#ff5d57", width=0.9, label="Venditori")
+    ax.axhline(0, color="#8fa19b", linewidth=0.9)
+    _stila_legenda(ax)
+    return figura_to_data_uri(fig)
+
+
+def genera_grafico_fan(titolo, asse_y, giorni, media, minimo, massimo):
+    fig, ax = prepara_figura(titolo, asse_y)
+    ax.fill_between(giorni, minimo, massimo, color="#00c48c", alpha=0.18, label="Min-Max tra le run")
+    ax.plot(giorni, media, color="#00c48c", linewidth=2.4, label="Media")
+    _stila_legenda(ax)
+    return figura_to_data_uri(fig)
+
+
+def genera_grafico_scatter(titolo, asse_x, asse_y, valori_x, valori_y):
+    fig, ax = prepara_figura(titolo, asse_y)
+    ax.set_xlabel(asse_x)
+    if valori_x and valori_y:
+        ax.scatter(valori_x, valori_y, color="#5f8cff", alpha=0.65, s=26, edgecolor="#050908", linewidth=0.4)
+        limite = max(max(abs(v) for v in valori_x), max(abs(v) for v in valori_y), 1) * 1.1
+        ax.plot([-limite, limite], [-limite, limite], color="#8fa19b", linewidth=1, linestyle="--", label="Parita'")
+        _stila_legenda(ax)
+    return figura_to_data_uri(fig)
+
+
+def genera_grafico_istogramma_generico(titolo, asse_x, valori, colore="#00c48c"):
+    fig, ax = prepara_figura(titolo, "Frequenza")
+    ax.set_xlabel(asse_x)
+    if valori:
+        numero_bin = min(20, max(5, len(valori) // 3))
+        ax.hist(valori, bins=numero_bin, color=colore, alpha=0.8, edgecolor="#050908")
+        media = float(np.mean(valori))
+        ax.axvline(media, color="#f3b33d", linewidth=2, label=f"Media: {media:.2f}")
+        _stila_legenda(ax)
+    return figura_to_data_uri(fig)
+
+
+def genera_grafici(contesto):
+    serie_classi = contesto["serie_classi"]
+    serie_gruppi = contesto["serie_gruppi"]
+    giorni_lista = contesto["giorni_lista"]
+    rendimenti = contesto["rendimenti"]
+    ricchezze_finali = contesto["ricchezze_finali"]
+    storico_offerta_bitcoin = contesto["storico_offerta_bitcoin"]
+    storico_trader_attivi = contesto["storico_trader_attivi"]
+    params = contesto["params"]
+
     giorni = [record["giorno"] for record in serie_classi]
     patrimonio_classi = {
         tipo: [record["classi"][tipo]["patrimonio"] for record in serie_classi]
@@ -463,47 +748,66 @@ def genera_grafici(serie_classi, serie_smart_dumb):
         for tipo in CLASSI_TRADER
     }
     rendimento_gruppi = {
-        nome: [record["gruppi"][nome]["rendimento_percentuale"] for record in serie_smart_dumb]
-        for nome in ("Smart", "Dumb")
+        nome: [record["gruppi"][nome]["rendimento_percentuale"] for record in serie_gruppi]
+        for nome in ("Smart", "Normal", "Dumb")
     }
     rendimento_finale = {
         tipo: serie_classi[-1]["classi"][tipo]["rendimento_percentuale"]
         for tipo in CLASSI_TRADER
     }
+    gini_nel_tempo = {"Gini": [g["gini"] for g in giorni_lista]}
+    gini_giorni = [g["giorno"] for g in giorni_lista]
 
-    return {
+    acf_grezzi = autocorrelazione(rendimenti, max_lag=20)
+    acf_assoluti = autocorrelazione(np.abs(rendimenti), max_lag=20)
+
+    grafici = {
         "patrimonio_classi": genera_grafico_linee(
-            "Patrimonio per classe trader",
-            "Patrimonio totale",
-            giorni,
-            patrimonio_classi,
+            "Patrimonio per classe trader", "Patrimonio totale", giorni, patrimonio_classi
         ),
         "performance_classi": genera_grafico_linee(
-            "Performance media per classe",
-            "Rendimento medio (%)",
-            giorni,
-            rendimento_classi,
+            "Performance media per classe", "Rendimento medio (%)", giorni, rendimento_classi
         ),
         "smart_vs_dumb": genera_grafico_linee(
-            "Smart vs Dumb",
-            "Rendimento medio (%)",
-            giorni,
-            rendimento_gruppi,
+            "Smart vs Normal vs Dumb", "Rendimento medio (%)", giorni, rendimento_gruppi
         ),
         "rendimento_finale": genera_grafico_barre(
-            "Rendimento finale per classe",
-            "Rendimento medio (%)",
-            rendimento_finale,
+            "Rendimento finale per classe", "Rendimento medio (%)", rendimento_finale
         ),
+        "gini_nel_tempo": genera_grafico_linee(
+            "Indice di Gini nel tempo", "Gini (0=uguaglianza, 1=disuguaglianza)", gini_giorni, gini_nel_tempo
+        ),
+        "curva_lorenz": genera_grafico_lorenz(ricchezze_finali),
+        "volumi_giornalieri": genera_grafico_volumi(giorni_lista),
+        "istogramma_rendimenti": genera_grafico_istogramma_rendimenti(rendimenti),
+        "acf_rendimenti": genera_grafico_acf(acf_grezzi, acf_assoluti),
     }
+
+    if parametro_attivo(params, "mining_attivo") and storico_offerta_bitcoin:
+        grafici["offerta_bitcoin"] = genera_grafico_linee(
+            "Bitcoin totali in circolazione (mining)",
+            "BTC totali",
+            list(range(len(storico_offerta_bitcoin))),
+            {"BTC in circolazione": storico_offerta_bitcoin},
+        )
+
+    if parametro_attivo(params, "ingresso_nuovi_trader_attivo") and storico_trader_attivi:
+        grafici["trader_attivi"] = genera_grafico_linee(
+            "Trader attivi nel mercato nel tempo",
+            "Numero di trader",
+            list(range(len(storico_trader_attivi))),
+            {"Trader nel mercato": storico_trader_attivi},
+        )
+
+    return grafici
 
 
 def simula_mercato(user_params):
     with _LOCK_SIMULAZIONE:
-        return _esegui_simulazione(user_params)
+        return _esegui_simulazione(user_params, includi_grafici=True)
 
 
-def _esegui_simulazione(user_params):
+def _esegui_simulazione(user_params, includi_grafici=True):
     params = DEFAULT_PARAMS | user_params
     valida_percentuali(params)
     valida_limiti(params)
@@ -511,21 +815,35 @@ def _esegui_simulazione(user_params):
     seed = params.get("seed")
     if seed not in (None, ""):
         random.seed(int(float(seed)))
-        np.random.seed(int(float(seed)))
+        np.random.seed(int(float(seed)) % (2**32 - 1))
 
     traders = crea_popolazione_trader(params)
+    prossimo_id = int(float(params["numero_trader"])) + 1
     storico_prezzi = [float(params["prezzo_iniziale"])]
     giorni = []
+
+    mining_attivo = parametro_attivo(params, "mining_attivo")
+    quantita_mining = float(params.get("mining_giornaliero", 0) or 0)
+    ingresso_attivo = parametro_attivo(params, "ingresso_nuovi_trader_attivo")
+    tasso_ingresso = max(float(params.get("tasso_ingresso_giornaliero", 0) or 0), 0)
+    spread = float(params.get("spread_bid_ask", 0) or 0) / 100
+
+    bitcoin_totali_correnti = float(params["bitcoin_totali"])
+    storico_offerta_bitcoin = [bitcoin_totali_correnti]
+    storico_trader_attivi = [len(traders)]
+
     classi_iniziali = aggrega_classi(traders, storico_prezzi[0])
     snapshot = [
         {
             "giorno": 0,
             "classi": classi_iniziali,
-            "smart_dumb": aggrega_smart_dumb(classi_iniziali),
+            "gruppi_psicologici": aggrega_gruppi_psicologici(classi_iniziali),
         }
     ]
 
-    for giorno in range(1, int(float(params["numero_giorni"])) + 1):
+    numero_giorni = int(float(params["numero_giorni"]))
+
+    for giorno in range(1, numero_giorni + 1):
         prezzo_corrente = storico_prezzi[-1]
         notizia = estrai_notizia(params)
         compratori = 0
@@ -539,10 +857,10 @@ def _esegui_simulazione(user_params):
             ordine = trader.decide_ordine(prezzo_corrente, storico_prezzi, notizia)
             if ordine == "compra":
                 compratori += 1
-                esegui_ordine(trader, ordine, prezzo_corrente)
+                esegui_ordine(trader, ordine, prezzo_corrente, spread=spread)
             elif ordine == "vendi":
                 venditori += 1
-                esegui_ordine(trader, ordine, prezzo_corrente)
+                esegui_ordine(trader, ordine, prezzo_corrente, spread=spread)
             else:
                 inattivi += 1
 
@@ -553,10 +871,27 @@ def _esegui_simulazione(user_params):
         nuovo_prezzo = max(0.01, prezzo_corrente * (1 + impatto * squilibrio + shock + rumore))
         storico_prezzi.append(nuovo_prezzo)
 
+        if mining_attivo and quantita_mining > 0:
+            candidati_random = [t for t in traders if isinstance(t, RandomTrader)]
+            if candidati_random:
+                minatore = random.choice(candidati_random)
+                minatore.bitcoin += quantita_mining
+                bitcoin_totali_correnti += quantita_mining
+        storico_offerta_bitcoin.append(bitcoin_totali_correnti)
+
+        if ingresso_attivo and tasso_ingresso > 0:
+            nuovi_entranti = int(np.random.poisson(tasso_ingresso))
+            cash_medio = float(params["cash_totale"]) / max(int(float(params["numero_trader"])), 1)
+            for _ in range(nuovi_entranti):
+                cash_nuovo = cash_medio * random.uniform(0.5, 1.5)
+                traders.append(RandomTrader(prossimo_id, cash_nuovo, 0.0))
+                prossimo_id += 1
+        storico_trader_attivi.append(len(traders))
+
         ricchezze = [t.genera_ricchezza(nuovo_prezzo) for t in traders]
         classi = aggrega_classi(traders, nuovo_prezzo)
-        smart_dumb = aggrega_smart_dumb(classi)
-        snapshot.append({"giorno": giorno, "classi": classi, "smart_dumb": smart_dumb})
+        gruppi_psicologici = aggrega_gruppi_psicologici(classi)
+        snapshot.append({"giorno": giorno, "classi": classi, "gruppi_psicologici": gruppi_psicologici})
         giorni.append(
             {
                 "giorno": giorno,
@@ -573,16 +908,22 @@ def _esegui_simulazione(user_params):
         "Random": sum(isinstance(t, RandomTrader) for t in traders),
         "Noise": sum(isinstance(t, NoiseTrader) for t in traders),
         "Chartist": sum(isinstance(t, Chartist) for t in traders),
+        "Smart": sum(isinstance(t, SmartTrader) for t in traders),
     }
     prezzo_finale = storico_prezzi[-1]
     ricchezze_finali = [t.genera_ricchezza(prezzo_finale) for t in traders]
-    serie_classi, serie_smart_dumb = costruisci_serie(snapshot)
+    serie_classi, serie_gruppi = costruisci_serie(snapshot)
+    rendimenti = calcola_log_rendimenti(storico_prezzi)
 
-    return {
+    risultato = {
         "params": params,
         "conteggi": conteggi,
         "giorni": giorni,
-        "grafici": genera_grafici(serie_classi, serie_smart_dumb),
+        "classi_finali": serie_classi[-1]["classi"],
+        "gruppi_psicologici_finali": serie_gruppi[-1]["gruppi"],
+        "statistiche_rendimenti": statistiche_rendimenti(rendimenti),
+        "test_adf_prezzo": test_adf_senza_drift(storico_prezzi),
+        "test_adf_log_prezzo": test_adf_senza_drift(np.log(np.clip(storico_prezzi, 1e-9, None))),
         "summary": {
             "prezzo_iniziale": round(storico_prezzi[0], 4),
             "prezzo_finale": round(prezzo_finale, 4),
@@ -590,5 +931,124 @@ def _esegui_simulazione(user_params):
             "gini_finale": round(calcola_gini(ricchezze_finali), 4),
             "totale_compratori": sum(g["compratori"] for g in giorni),
             "totale_venditori": sum(g["venditori"] for g in giorni),
+            "trader_finali": len(traders),
         },
     }
+
+    if includi_grafici:
+        risultato["grafici"] = genera_grafici(
+            {
+                "serie_classi": serie_classi,
+                "serie_gruppi": serie_gruppi,
+                "giorni_lista": giorni,
+                "rendimenti": rendimenti,
+                "ricchezze_finali": ricchezze_finali,
+                "storico_offerta_bitcoin": storico_offerta_bitcoin,
+                "storico_trader_attivi": storico_trader_attivi,
+                "params": params,
+            }
+        )
+
+    return risultato
+
+
+def _limita_numero_run(numero_run, params_livello):
+    numero_trader = int(float(params_livello.get("numero_trader", DEFAULT_PARAMS["numero_trader"])))
+    numero_giorni = int(float(params_livello.get("numero_giorni", DEFAULT_PARAMS["numero_giorni"])))
+    numero_run = max(1, min(int(numero_run), MASSIMO_RUN_MULTIRUN))
+    carico_stimato = numero_run * numero_giorni * numero_trader
+    if carico_stimato > LIMITE_CARICO_MULTIRUN:
+        fattore = LIMITE_CARICO_MULTIRUN / carico_stimato
+        numero_run = max(3, int(numero_run * fattore))
+    return numero_run
+
+
+def esegui_multirun(user_params, numero_run=30, parametro_confronto=None, valori_confronto=None):
+    """Esegue piu' simulazioni Monte Carlo con lo stesso set di parametri
+    (seed diversi ad ogni run), oppure - se viene indicato un parametro e
+    fino a 3 valori da confrontare - ripete il confronto per ciascun valore,
+    replicando l'analisi "fees0.0001 / fees0.0005 / fees0.001" della
+    versione avanzata del LAM di riferimento (Cattaneo & Bartoli, Sez. 8)."""
+    with _LOCK_SIMULAZIONE:
+        if parametro_confronto and valori_confronto:
+            livelli_richiesti = [
+                (f"{parametro_confronto} = {valore:g}", {**user_params, parametro_confronto: float(valore)})
+                for valore in list(valori_confronto)[:3]
+            ]
+        else:
+            livelli_richiesti = [("Scenario unico", dict(user_params))]
+
+        risultati_livelli = []
+        for etichetta, parametri_livello in livelli_richiesti:
+            run_effettivi = _limita_numero_run(numero_run, parametri_livello)
+            prezzi_matrice = []
+            prezzi_finali = []
+            rendimento_per_gruppo = {"Smart": [], "Normal": [], "Dumb": []}
+            rendimento_per_classe = {tipo: [] for tipo in CLASSI_TRADER}
+
+            for indice_run in range(run_effettivi):
+                parametri_run = dict(parametri_livello)
+                seme_base = parametri_run.get("seed", DEFAULT_PARAMS["seed"])
+                seme_base = int(float(seme_base)) if seme_base not in (None, "") else 0
+                parametri_run["seed"] = seme_base + indice_run
+
+                esito = _esegui_simulazione(parametri_run, includi_grafici=False)
+                prezzi_matrice.append([g["prezzo"] for g in esito["giorni"]])
+                prezzi_finali.append(esito["summary"]["prezzo_finale"])
+                for gruppo, dati in esito["gruppi_psicologici_finali"].items():
+                    rendimento_per_gruppo[gruppo].append(dati["rendimento_percentuale"])
+                for tipo, dati in esito["classi_finali"].items():
+                    rendimento_per_classe[tipo].append(dati["rendimento_percentuale"])
+
+            lunghezza_minima = min((len(p) for p in prezzi_matrice), default=0)
+            grafico_fan = None
+            if lunghezza_minima > 0:
+                matrice = np.array([p[:lunghezza_minima] for p in prezzi_matrice])
+                giorni_idx = list(range(lunghezza_minima))
+                grafico_fan = genera_grafico_fan(
+                    f"Prezzo medio su {run_effettivi} run ({etichetta})",
+                    "Prezzo",
+                    giorni_idx,
+                    matrice.mean(axis=0).tolist(),
+                    matrice.min(axis=0).tolist(),
+                    matrice.max(axis=0).tolist(),
+                )
+
+            smart_vals = rendimento_per_gruppo["Smart"]
+            dumb_vals = rendimento_per_gruppo["Dumb"]
+            win_rate = None
+            differenze = []
+            if smart_vals and dumb_vals:
+                differenze = [s - d for s, d in zip(smart_vals, dumb_vals)]
+                vittorie = sum(1 for diff in differenze if diff > 0)
+                win_rate = round(100 * vittorie / len(differenze), 1)
+
+            risultati_livelli.append(
+                {
+                    "etichetta": etichetta,
+                    "numero_run": run_effettivi,
+                    "prezzo_medio_finale": round(float(np.mean(prezzi_finali)), 2) if prezzi_finali else None,
+                    "rendimento_medio_gruppi": {
+                        gruppo: (round(float(np.mean(valori)), 2) if valori else None)
+                        for gruppo, valori in rendimento_per_gruppo.items()
+                    },
+                    "rendimento_medio_classi": {
+                        tipo: (round(float(np.mean(valori)), 2) if valori else None)
+                        for tipo, valori in rendimento_per_classe.items()
+                    },
+                    "win_rate_smart_vs_dumb": win_rate,
+                    "grafico_fan_prezzo": grafico_fan,
+                    "grafico_scatter_smart_dumb": genera_grafico_scatter(
+                        "Smart vs Dumb, ogni punto e' una run",
+                        "Rendimento Dumb (%)",
+                        "Rendimento Smart (%)",
+                        dumb_vals,
+                        smart_vals,
+                    ),
+                    "grafico_istogramma_differenza": genera_grafico_istogramma_generico(
+                        "Differenza di rendimento (Smart - Dumb)", "Differenza percentuale", differenze
+                    ),
+                }
+            )
+
+        return {"livelli": risultati_livelli}
