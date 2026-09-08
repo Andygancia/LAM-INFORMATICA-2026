@@ -4,7 +4,7 @@ import os
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from simulation import DEFAULT_PARAMS, simula_mercato
+from simulation import DEFAULT_PARAMS, simula_mercato, esegui_multirun
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -33,16 +33,38 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
-        if self.path != "/api/simulate":
+        if self.path == "/api/simulate":
+            self._gestisci_simulate()
+        elif self.path == "/api/multirun":
+            self._gestisci_multirun()
+        else:
             self.send_error(404, "Endpoint non trovato")
-            return
 
+    def _leggi_corpo_json(self):
         length = int(self.headers.get("Content-Length", 0))
         raw_body = self.rfile.read(length) if length else b"{}"
+        return json.loads(raw_body.decode("utf-8"))
 
+    def _gestisci_simulate(self):
         try:
-            payload = json.loads(raw_body.decode("utf-8"))
+            payload = self._leggi_corpo_json()
             result = simula_mercato(payload)
+            self.send_json(result)
+        except Exception as exc:
+            self.send_json({"error": str(exc)}, status=400)
+
+    def _gestisci_multirun(self):
+        try:
+            payload = self._leggi_corpo_json()
+            numero_run = int(float(payload.pop("numero_run", 30) or 30))
+            parametro_confronto = payload.pop("parametro_confronto", None) or None
+            valori_confronto = payload.pop("valori_confronto", None) or None
+            result = esegui_multirun(
+                payload,
+                numero_run=numero_run,
+                parametro_confronto=parametro_confronto,
+                valori_confronto=valori_confronto,
+            )
             self.send_json(result)
         except Exception as exc:
             self.send_json({"error": str(exc)}, status=400)
