@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Guida Simulazione Mercato Bitcoin</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="guide-shell">
+      <header class="guide-hero">
+        <div class="brand">
+          <span class="brand-mark">₿</span>
+          <div>
+            <h1>Guida alla simulazione</h1>
+            <p>Significato dei parametri e comportamento dei trader</p>
+          </div>
+        </div>
+        <a class="back-link" href="/">Torna alla dashboard</a>
+      </header>
+
+      <section class="guide-grid">
+        <article class="panel guide-card">
+          <h2>Parametri generali</h2>
+          <dl>
+            <dt>Trader</dt>
+            <dd>Numero totale di agenti che partecipano al mercato. Piu trader significa una simulazione piu popolata e meno dominata da pochi comportamenti casuali.</dd>
+
+            <dt>Giorni</dt>
+            <dd>Durata della simulazione. Ogni giorno viene estratta una notizia, i trader decidono se comprare o vendere e il prezzo viene aggiornato.</dd>
+
+            <dt>Prezzo iniziale</dt>
+            <dd>Prezzo di partenza del bitcoin. Tutte le variazioni successive partono da questo valore.</dd>
+
+            <dt>Beta Pareto</dt>
+            <dd>Controlla quanto e diseguale la distribuzione iniziale di cash e bitcoin. Valori bassi tendono a creare piu concentrazione; valori piu alti distribuiscono la ricchezza in modo meno estremo.</dd>
+
+            <dt>Bitcoin totali</dt>
+            <dd>Quantita complessiva di bitcoin distribuita tra tutti i trader all'inizio della simulazione.</dd>
+
+            <dt>Cash totale</dt>
+            <dd>Quantita complessiva di denaro disponibile nel mercato, distribuita tra i trader all'inizio.</dd>
+
+            <dt>Impatto domanda/offerta</dt>
+            <dd>Misura quanto il prezzo reagisce allo squilibrio tra compratori e venditori. Se e alto, pochi trader in piu dal lato buy o sell possono muovere molto il prezzo.</dd>
+
+            <dt>Seed</dt>
+            <dd>Numero usato per rendere ripetibile la simulazione. Con lo stesso seed e gli stessi parametri ottieni lo stesso risultato.</dd>
+          </dl>
+        </article>
+
+        <article class="panel guide-card">
+          <h2>Composizione del mercato</h2>
+          <dl>
+            <dt>Random %</dt>
+            <dd>Percentuale desiderata di RandomTrader. Questi agenti introducono comportamento casuale di base.</dd>
+
+            <dt>Noise %</dt>
+            <dd>Percentuale desiderata di NoiseTrader. Questi agenti reagiscono alle notizie e possono vendere per panico.</dd>
+
+            <dt>Chartist %</dt>
+            <dd>Percentuale desiderata di Chartist. Questi agenti osservano il movimento recente del prezzo.</dd>
+          </dl>
+          <p class="note">Le tre percentuali delle categorie attive devono sommare esattamente a 100: se una categoria e disattivata viene esclusa dal totale, e la simulazione non parte finche la somma non torna a 100.</p>
+        </article>
+
+        <article class="panel guide-card">
+          <h2>Notizie</h2>
+          <dl>
+            <dt>Positive %</dt>
+            <dd>Probabilita che in un giorno esca una notizia positiva. Tende a spingere i NoiseTrader verso l'acquisto e aggiunge un piccolo shock positivo al prezzo.</dd>
+
+            <dt>Neutre %</dt>
+            <dd>Probabilita che la giornata non abbia una notizia rilevante. In questo caso i NoiseTrader non ricevono una direzione chiara dalla notizia.</dd>
+
+            <dt>Negative %</dt>
+            <dd>Probabilita che in un giorno esca una notizia negativa. Tende a spingere i NoiseTrader verso la vendita e aggiunge un piccolo shock negativo al prezzo.</dd>
+          </dl>
+          <p class="note">Anche queste probabilita vengono usate come pesi: 10, 80, 10 significa 10% positiva, 80% neutra, 10% negativa.</p>
+        </article>
+
+        <article class="panel guide-card">
+          <h2>Indicatori mostrati</h2>
+          <dl>
+            <dt>Prezzo finale</dt>
+            <dd>Prezzo del bitcoin alla fine dell'ultimo giorno simulato.</dd>
+
+            <dt>Variazione</dt>
+            <dd>Differenza percentuale tra prezzo finale e prezzo iniziale.</dd>
+
+            <dt>Gini finale</dt>
+            <dd>Indice di disuguaglianza della ricchezza finale dei trader. Vicino a 0 significa ricchezza distribuita in modo simile; piu si avvicina a 1, piu la ricchezza e concentrata.</dd>
+
+            <dt>Buy / Sell</dt>
+            <dd>Totale degli ordini di acquisto e vendita decisi dai trader durante tutta la simulazione.</dd>
+          </dl>
+        </article>
+
+        <article class="panel guide-card wide">
+          <h2>Classi di trader</h2>
+          <div class="trader-grid">
+            <section>
+              <h3>Trader</h3>
+              <p>Classe base. Ogni trader ha un identificativo, una quantita di cash e una quantita di bitcoin. Sa calcolare la propria ricchezza come cash piu bitcoin moltiplicati per il prezzo corrente.</p>
+            </section>
+
+            <section>
+              <h3>RandomTrader</h3>
+              <p>E un trader casuale. Ogni giorno ha il 10% di probabilita di essere attivo. Se agisce, sceglie in modo casuale se comprare o vendere, compatibilmente con le risorse che possiede.</p>
+            </section>
+
+            <section>
+              <h3>Chartist</h3>
+              <p>Guarda la variazione recente del prezzo. Se il prezzo e salito oltre la soglia dell'1%, tende a comprare; se e sceso oltre l'1%, tende a vendere. Rappresenta un trader che segue il trend.</p>
+            </section>
+
+            <section>
+              <h3>NoiseTrader</h3>
+              <p>Reagisce al rumore informativo del mercato. Se la notizia e positiva tende a comprare; se e negativa tende a vendere. Inoltre puo vendere per panico anche quando la notizia non e negativa.</p>
+            </section>
+          </div>
+        </article>
+
+        <article class="panel guide-card wide">
+          <h2>Come viene aggiornato il prezzo</h2>
+          <p>Ogni giorno il codice conta quanti trader vogliono comprare e quanti vogliono vendere. Se ci sono piu compratori, il prezzo tende a salire; se ci sono piu venditori, tende a scendere. A questa dinamica si aggiungono un piccolo rumore casuale e l'effetto della notizia del giorno.</p>
+          <p class="note">La formula e volutamente semplice: serve a osservare dinamiche emergenti, non a prevedere il prezzo reale del bitcoin.</p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

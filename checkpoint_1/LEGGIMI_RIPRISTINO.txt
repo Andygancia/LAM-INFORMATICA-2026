@@ -1,0 +1,26 @@
+CHECKPOINT 1 - backup pre-riorganizzazione (creato dal cloud workspace di Claude)
+
+Questo contiene una copia integrale di come erano le cartelle PRIMA
+di essere unite in una sola, per poter tornare indietro in caso di problemi
+con la dashboard o con i file.
+
+Contenuto:
+- LAM-documenti-originale/  -> copia esatta di ~/LAM-documenti (prima della riorganizzazione)
+- LAM-originale/            -> copia di dashboard/, prove/, requirements.txt, .gitignore
+                               di Desktop/LAM prima della riorganizzazione
+
+Come ripristinare:
+1) Con git (consigliato): dentro Desktop/LAM esegui
+      git log --oneline
+   e poi
+      git checkout 8f3fd37 -- dashboard prove requirements.txt .gitignore
+   (il commit "Checkpoint 1: stato del progetto prima della riorganizzazione
+   delle cartelle" contiene lo stato originale di Desktop/LAM)
+
+2) Manualmente: copia il contenuto di LAM-originale/ e
+   LAM-documenti-originale/ sovrascrivendo le cartelle attuali.
+
+Nota: LAM_env/ (l'ambiente virtuale Python) non e' incluso qui perche' e'
+rigenerabile con:
+   python3 -m venv LAM_env
+   LAM_env/bin/pip install -r requirements.txt
