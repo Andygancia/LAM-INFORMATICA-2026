@@ -1,0 +1,11 @@
+Avvio dashboard:
+  cd /Users/andygancia/Desktop/LAM
+  LAM_env/bin/python dashboard/app.py
+Poi apri: http://127.0.0.1:8765
+
+La porta si sposta automaticamente (8765-8784) se occupata; puoi forzarla con
+PORT=9000 LAM_env/bin/python dashboard/app.py
+
+Setup ambiente da zero:
+  python3 -m venv LAM_env
+  LAM_env/bin/pip install -r requirements.txt
