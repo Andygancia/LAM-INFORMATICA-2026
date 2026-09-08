@@ -38,6 +38,7 @@ const percentageGroups = [
 ];
 const PERCENT_TOLERANCE = 0.000001;
 const traderToggles = form.querySelectorAll("[data-trader-toggle]");
+const simpleToggles = form.querySelectorAll("[data-simple-toggle]");
 
 function normalizeDecimalValue(value) {
   return String(value).replace(",", ".");
@@ -188,6 +189,24 @@ function syncTraderControls() {
   validatePercentageGroups();
 }
 
+function syncSimpleToggles() {
+  simpleToggles.forEach((toggle) => {
+    const targetName = toggle.dataset.simpleToggle;
+    const target = form.elements[targetName];
+    const card = toggle.closest("[data-trader-card]");
+    if (target) {
+      target.disabled = !toggle.checked;
+      const stepperButtons = target.parentElement?.querySelectorAll(".stepper-button") || [];
+      stepperButtons.forEach((button) => {
+        button.disabled = !toggle.checked;
+      });
+    }
+    if (card) {
+      card.classList.toggle("is-disabled", !toggle.checked);
+    }
+  });
+}
+
 numericInputs.forEach((input) => {
   const wrapper = document.createElement("div");
   const controls = document.createElement("div");
@@ -236,6 +255,10 @@ traderToggles.forEach((toggle) => {
   toggle.addEventListener("change", syncTraderControls);
 });
 
+simpleToggles.forEach((toggle) => {
+  toggle.addEventListener("change", syncSimpleToggles);
+});
+
 async function loadDefaults() {
   resizeCanvas();
   try {
@@ -244,6 +267,7 @@ async function loadDefaults() {
     defaults = await response.json();
     fillForm(defaults);
     syncTraderControls();
+    syncSimpleToggles();
     await runSimulation();
   } catch (error) {
     statusEl.textContent = descriviErrore(error);
@@ -320,16 +344,52 @@ function renderResult(result) {
   document.querySelector("#orders").textContent = `${result.summary.totale_compratori} / ${result.summary.totale_venditori}`;
   drawChart(result.giorni.map((day) => day.prezzo));
   renderPythonCharts(result.grafici);
+  renderStatistiche(result.statistiche_rendimenti, result.test_adf_prezzo);
   renderPopulation(result.conteggi);
   renderTable(result.giorni.slice(-12).reverse());
+}
+
+function renderStatistiche(stat, adfPrezzo) {
+  if (stat) {
+    document.querySelector("#stat-media").textContent = stat.media;
+    document.querySelector("#stat-dev").textContent = stat.deviazione_standard;
+    document.querySelector("#stat-asimmetria").textContent = stat.asimmetria;
+    document.querySelector("#stat-curtosi").textContent = stat.curtosi;
+  }
+
+  const container = document.querySelector("#adf-cards");
+  if (!adfPrezzo) {
+    container.innerHTML = "<p>Serie troppo corta per il test ADF (aumenta il numero di giorni).</p>";
+    return;
+  }
+
+  container.innerHTML = Object.entries(adfPrezzo.valori_critici)
+    .map(([livello, soglia]) => {
+      const rifiuta = adfPrezzo.rifiuta_ipotesi_random_walk[livello];
+      return `
+        <div class="adf-card ${rifiuta ? "rifiuta" : "non-rifiuta"}">
+          <span>Test ADF (prezzo) - livello ${livello}</span>
+          <strong>${rifiuta ? "Rifiuta random walk" : "Non rifiuta: unit root"}</strong>
+          <span>tau = ${adfPrezzo.statistica_tau} (soglia ${soglia})</span>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function renderPythonCharts(charts = {}) {
   const chartDefinitions = [
     ["patrimonio_classi", "Patrimonio classi trader"],
     ["performance_classi", "Performance e rendimento"],
-    ["smart_vs_dumb", "Smart vs dumb"],
+    ["smart_vs_dumb", "Smart vs Normal vs Dumb"],
     ["rendimento_finale", "Rendimento finale"],
+    ["istogramma_rendimenti", "Istogramma log-rendimenti (fat tail)"],
+    ["acf_rendimenti", "Autocorrelazione (volatility clustering)"],
+    ["gini_nel_tempo", "Gini nel tempo"],
+    ["curva_lorenz", "Curva di Lorenz"],
+    ["volumi_giornalieri", "Volumi giornalieri"],
+    ["offerta_bitcoin", "Bitcoin in circolazione (mining)"],
+    ["trader_attivi", "Trader attivi nel tempo"],
   ];
 
   pythonChartsEl.innerHTML = chartDefinitions
@@ -420,6 +480,7 @@ function renderPopulation(counts) {
     ["Random", counts.Random, ""],
     ["Noise", counts.Noise, "noise"],
     ["Chartist", counts.Chartist, "chartist"],
+    ["Smart", counts.Smart, "smart"],
   ];
 
   document.querySelector("#population-bars").innerHTML = rows
@@ -459,7 +520,100 @@ form.addEventListener("submit", async (event) => {
 resetButton.addEventListener("click", async () => {
   fillForm(defaults);
   syncTraderControls();
+  syncSimpleToggles();
   await runSimulation();
 });
+
+// --- Simulazioni multiple (Monte Carlo / sensitivity) ---
+
+const multirunButton = document.querySelector("#multirun-button");
+const multirunStatus = document.querySelector("#multirun-status");
+const multirunResults = document.querySelector("#multirun-results");
+
+function normalizeOptionalNumber(value) {
+  const normalized = normalizeDecimalValue(value ?? "");
+  if (normalized === "") return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function renderMultirun(livelli) {
+  multirunResults.innerHTML = livelli
+    .map((livello) => {
+      const righeGruppi = Object.entries(livello.rendimento_medio_gruppi)
+        .map(([nome, valore]) => `<tr><td>${nome}</td><td>${valore === null ? "-" : valore + "%"}</td></tr>`)
+        .join("");
+      const graficoFan = livello.grafico_fan_prezzo
+        ? `<figure class="python-chart"><figcaption>Prezzo medio (banda min-max tra le run)</figcaption><img src="${livello.grafico_fan_prezzo}" alt="Prezzo medio tra le run"></figure>`
+        : "";
+      return `
+        <article class="multirun-level">
+          <h3>${livello.etichetta} — ${livello.numero_run} run, prezzo medio finale $${livello.prezzo_medio_finale ?? "-"}, win-rate Smart vs Dumb: ${livello.win_rate_smart_vs_dumb ?? "-"}%</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Gruppo</th><th>Rendimento medio</th></tr></thead>
+              <tbody>${righeGruppi}</tbody>
+            </table>
+          </div>
+          <div class="chart-grid">
+            ${graficoFan}
+            <figure class="python-chart"><figcaption>Smart vs Dumb, ogni punto e' una run</figcaption><img src="${livello.grafico_scatter_smart_dumb}" alt="Scatter smart vs dumb"></figure>
+            <figure class="python-chart"><figcaption>Differenza di rendimento (Smart - Dumb)</figcaption><img src="${livello.grafico_istogramma_differenza}" alt="Istogramma differenza smart dumb"></figure>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+async function eseguiMultirun() {
+  const percentageValidation = validatePercentageGroups();
+  if (!percentageValidation.valid) {
+    multirunStatus.textContent = "Sistema prima i parametri a sinistra: " + percentageValidation.messages.join(" | ");
+    return;
+  }
+
+  const numeroRun = normalizeOptionalNumber(document.querySelector("#multirun-numero").value) ?? 30;
+  const parametro = document.querySelector("#multirun-parametro").value || null;
+  const valori = [1, 2, 3]
+    .map((indice) => normalizeOptionalNumber(document.querySelector(`#multirun-valore${indice}`).value))
+    .filter((valore) => valore !== null);
+
+  const payload = { ...readForm(), numero_run: numeroRun };
+  if (parametro && valori.length > 0) {
+    payload.parametro_confronto = parametro;
+    payload.valori_confronto = valori;
+  }
+
+  multirunStatus.textContent = "Esecuzione in corso, puo' richiedere qualche secondo...";
+  multirunButton.disabled = true;
+  try {
+    const response = await fetch("/api/multirun", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error("Risposta del server non valida");
+    }
+
+    if (!response.ok) {
+      multirunStatus.textContent = result.error || "Errore nell'esecuzione multipla";
+      return;
+    }
+    renderMultirun(result.livelli);
+    multirunStatus.textContent = "Completato";
+  } catch (error) {
+    multirunStatus.textContent = descriviErrore(error);
+  } finally {
+    multirunButton.disabled = false;
+  }
+}
+
+multirunButton.addEventListener("click", eseguiMultirun);
 
 loadDefaults();

@@ -29,6 +29,7 @@
             <label>Bitcoin totali <input name="bitcoin_totali" type="text" inputmode="decimal" data-number-input data-min="0" data-step="1"></label>
             <label>Cash totale <input name="cash_totale" type="text" inputmode="decimal" data-number-input data-min="0" data-step="1"></label>
             <label>Impatto domanda/offerta <input name="impatto_domanda_offerta" type="text" inputmode="decimal" data-number-input data-min="0" data-max="1" data-step="0.01"></label>
+            <label>Spread bid/ask (%) <input name="spread_bid_ask" type="text" inputmode="decimal" data-number-input data-min="0" data-max="20" data-step="0.1"></label>
             <label>Seed <input name="seed" type="text" inputmode="decimal" data-number-input data-min="0" data-max="4294967295" data-step="1"></label>
           </div>
 
@@ -48,6 +49,13 @@
               </label>
               <label>Quota % <input name="percentuale_chartist" type="text" inputmode="decimal" data-number-input data-percent-group="trader-types" data-trader-percent="chartist" data-min="0" data-max="100" data-step="1"></label>
             </div>
+            <div class="trader-card" data-trader-card="smart">
+              <label class="switch-label">
+                <input name="trader_smart_attivo" type="checkbox" data-trader-toggle="smart" checked>
+                <span>Smart</span>
+              </label>
+              <label>Quota % <input name="percentuale_smart" type="text" inputmode="decimal" data-number-input data-percent-group="trader-types" data-trader-percent="smart" data-min="0" data-max="100" data-step="1"></label>
+            </div>
             <div class="trader-card trader-card-wide" data-trader-card="noise">
               <label class="switch-label">
                 <input name="trader_noise_attivo" type="checkbox" data-trader-toggle="noise" checked>
@@ -66,6 +74,24 @@
             </div>
           </div>
           <p class="percent-status" data-percent-status="trader-types"></p>
+
+          <h2>Meccaniche avanzate</h2>
+          <div class="trader-panel">
+            <div class="trader-card" data-trader-card="mining">
+              <label class="switch-label">
+                <input name="mining_attivo" type="checkbox" data-simple-toggle="mining_giornaliero">
+                <span>Mining</span>
+              </label>
+              <label>BTC minati/giorno <input name="mining_giornaliero" type="text" inputmode="decimal" data-number-input data-min="0" data-step="0.5"></label>
+            </div>
+            <div class="trader-card" data-trader-card="ingresso">
+              <label class="switch-label">
+                <input name="ingresso_nuovi_trader_attivo" type="checkbox" data-simple-toggle="tasso_ingresso_giornaliero">
+                <span>Nuovi trader nel tempo</span>
+              </label>
+              <label>Nuovi trader/giorno (media) <input name="tasso_ingresso_giornaliero" type="text" inputmode="decimal" data-number-input data-min="0" data-max="200" data-step="0.5"></label>
+            </div>
+          </div>
 
           <div class="actions">
             <button type="submit">Avvia simulazione</button>
@@ -102,9 +128,35 @@
           <canvas id="price-chart" width="980" height="360" role="img" aria-label="Grafico del prezzo del bitcoin nel tempo">Il tuo browser non supporta la visualizzazione del grafico del prezzo.</canvas>
         </section>
 
+        <section class="panel stats-panel">
+          <div class="section-head">
+            <h2>Proprietà statistiche (stylized facts)</h2>
+          </div>
+          <div class="stats-row">
+            <article class="metric">
+              <span>Media rendimenti</span>
+              <strong id="stat-media">-</strong>
+            </article>
+            <article class="metric">
+              <span>Dev. standard</span>
+              <strong id="stat-dev">-</strong>
+            </article>
+            <article class="metric">
+              <span>Asimmetria</span>
+              <strong id="stat-asimmetria">-</strong>
+            </article>
+            <article class="metric">
+              <span>Curtosi (normale=3)</span>
+              <strong id="stat-curtosi">-</strong>
+            </article>
+          </div>
+          <p class="note">Valori reali di riferimento del Bitcoin (Cocco, Concas &amp; Marchesi, 2017): media 0.007, dev.std 0.057, asimmetria 0.239, curtosi 15.001. Una curtosi molto più alta di 3 indica "fat tail" (codə di distribuzione più pesanti della normale): provate ad aumentare la quota di Chartist per avvicinarvi ai valori reali.</p>
+          <div class="adf-grid" id="adf-cards"></div>
+        </section>
+
         <section class="chart-board">
           <div class="section-head">
-            <h2>Analisi classi trader</h2>
+            <h2>Analisi classi trader e statistiche</h2>
           </div>
           <div id="python-charts" class="chart-grid"></div>
         </section>
@@ -136,6 +188,34 @@
               </table>
             </div>
           </article>
+        </section>
+
+        <section class="panel multirun-panel">
+          <div class="section-head">
+            <h2>Simulazioni multiple (Monte Carlo / sensitivity)</h2>
+          </div>
+          <p class="note">Esegue più volte la simulazione con gli stessi parametri impostati a sinistra (semi diversi ad ogni run), per vedere quanto i risultati dipendono dal caso e non da una singola run fortunata. Si può anche confrontare fino a 3 valori di un singolo parametro, come nelle simulazioni "fees"/"spread" dell'esempio di riferimento.</p>
+          <div class="multirun-form">
+            <label>Numero di run <input id="multirun-numero" type="text" inputmode="decimal" value="30"></label>
+            <label class="wide">Parametro da confrontare (opzionale)
+              <select id="multirun-parametro">
+                <option value="">Nessuno (solo Monte Carlo)</option>
+                <option value="spread_bid_ask">Spread bid/ask (%)</option>
+                <option value="impatto_domanda_offerta">Impatto domanda/offerta</option>
+                <option value="beta">Beta Pareto</option>
+                <option value="mining_giornaliero">BTC minati/giorno (attiva il Mining a sinistra)</option>
+                <option value="tasso_ingresso_giornaliero">Nuovi trader/giorno (attiva l'ingresso a sinistra)</option>
+              </select>
+            </label>
+            <label>Valore 1 <input id="multirun-valore1" type="text" inputmode="decimal"></label>
+            <label>Valore 2 <input id="multirun-valore2" type="text" inputmode="decimal"></label>
+            <label>Valore 3 <input id="multirun-valore3" type="text" inputmode="decimal"></label>
+            <div class="actions" style="grid-column: 1 / -1; margin-top: 0;">
+              <button type="button" id="multirun-button">Esegui simulazioni multiple</button>
+            </div>
+          </div>
+          <p id="multirun-status" role="status" aria-live="polite"></p>
+          <div id="multirun-results" class="multirun-results"></div>
         </section>
       </section>
     </main>
