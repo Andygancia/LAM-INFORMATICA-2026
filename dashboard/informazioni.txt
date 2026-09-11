@@ -1,6 +1,13 @@
-Avvio dashboard:
+Avvio dashboard Andy:
   cd /Users/andygancia/Desktop/LAM
   LAM_env/bin/python dashboard/app.py
+
+
+Avvio dashboard gheorghi:
+ cd /Users/gheorghi_machekin/Desktop/LAM-INFORMATICA-2026-main
+LAM_env/bin/python dashboard/app.py
+
+
 Poi apri: http://127.0.0.1:8765
 
 
@@ -10,3 +17,13 @@ Setup ambiente da zero:
 
 spegnimento dashboard:
 pkill -f "dashboard/app.py"
+
+aggiornamento github:
+
+  git status (report modifiche)
+
+  git add [nome file]
+
+  git commit -m "[messaggio]"
+
+  git push 
