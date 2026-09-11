@@ -755,9 +755,6 @@ def genera_grafici(contesto):
         tipo: serie_classi[-1]["classi"][tipo]["rendimento_percentuale"]
         for tipo in CLASSI_TRADER
     }
-    gini_nel_tempo = {"Gini": [g["gini"] for g in giorni_lista]}
-    gini_giorni = [g["giorno"] for g in giorni_lista]
-
     acf_grezzi = autocorrelazione(rendimenti, max_lag=20)
     acf_assoluti = autocorrelazione(np.abs(rendimenti), max_lag=20)
 
@@ -774,14 +771,24 @@ def genera_grafici(contesto):
         "rendimento_finale": genera_grafico_barre(
             "Rendimento finale per classe", "Rendimento medio (%)", rendimento_finale
         ),
-        "gini_nel_tempo": genera_grafico_linee(
-            "Indice di Gini nel tempo", "Gini (0=uguaglianza, 1=disuguaglianza)", gini_giorni, gini_nel_tempo
-        ),
         "curva_lorenz": genera_grafico_lorenz(ricchezze_finali),
         "volumi_giornalieri": genera_grafico_volumi(giorni_lista),
         "istogramma_rendimenti": genera_grafico_istogramma_rendimenti(rendimenti),
         "acf_rendimenti": genera_grafico_acf(acf_grezzi, acf_assoluti),
     }
+
+    # Il Gini nel tempo e' quasi piatto quando la popolazione e la quantita'
+    # di bitcoin sono fisse (la disuguaglianza la decide la Pareto iniziale):
+    # ha senso mostrarlo solo quando mining o ingresso trader la fanno variare.
+    if parametro_attivo(params, "mining_attivo") or parametro_attivo(
+        params, "ingresso_nuovi_trader_attivo"
+    ):
+        grafici["gini_nel_tempo"] = genera_grafico_linee(
+            "Indice di Gini nel tempo",
+            "Gini (0=uguaglianza, 1=disuguaglianza)",
+            [g["giorno"] for g in giorni_lista],
+            {"Gini": [g["gini"] for g in giorni_lista]},
+        )
 
     if parametro_attivo(params, "mining_attivo") and storico_offerta_bitcoin:
         grafici["offerta_bitcoin"] = genera_grafico_linee(
@@ -804,7 +811,12 @@ def genera_grafici(contesto):
 
 def simula_mercato(user_params):
     with _LOCK_SIMULAZIONE:
-        return _esegui_simulazione(user_params, includi_grafici=True)
+        risultato = _esegui_simulazione(user_params, includi_grafici=True)
+    # Questi campi servono solo internamente a esegui_multirun; la dashboard
+    # non li usa, quindi non li spediamo nella risposta di /api/simulate.
+    for chiave in ("classi_finali", "gruppi_psicologici_finali"):
+        risultato.pop(chiave, None)
+    return risultato
 
 
 def _esegui_simulazione(user_params, includi_grafici=True):
@@ -814,8 +826,14 @@ def _esegui_simulazione(user_params, includi_grafici=True):
 
     seed = params.get("seed")
     if seed not in (None, ""):
-        random.seed(int(float(seed)))
-        np.random.seed(int(float(seed)) % (2**32 - 1))
+        seed_usato = int(float(seed))
+    else:
+        # Campo vuoto = seed casuale: lo generiamo qui e lo restituiamo nella
+        # risposta (summary.seed_usato), cosi' la corsa resta riproducibile
+        # anche se non era stato scelto un numero esplicito.
+        seed_usato = random.SystemRandom().randrange(2**32 - 1)
+    random.seed(seed_usato)
+    np.random.seed(seed_usato % (2**32 - 1))
 
     traders = crea_popolazione_trader(params)
     prossimo_id = int(float(params["numero_trader"])) + 1
@@ -923,15 +941,13 @@ def _esegui_simulazione(user_params, includi_grafici=True):
         "gruppi_psicologici_finali": serie_gruppi[-1]["gruppi"],
         "statistiche_rendimenti": statistiche_rendimenti(rendimenti),
         "test_adf_prezzo": test_adf_senza_drift(storico_prezzi),
-        "test_adf_log_prezzo": test_adf_senza_drift(np.log(np.clip(storico_prezzi, 1e-9, None))),
         "summary": {
             "prezzo_iniziale": round(storico_prezzi[0], 4),
             "prezzo_finale": round(prezzo_finale, 4),
             "variazione_percentuale": round((prezzo_finale / storico_prezzi[0] - 1) * 100, 2),
             "gini_finale": round(calcola_gini(ricchezze_finali), 4),
-            "totale_compratori": sum(g["compratori"] for g in giorni),
-            "totale_venditori": sum(g["venditori"] for g in giorni),
             "trader_finali": len(traders),
+            "seed_usato": seed_usato,
         },
     }
 

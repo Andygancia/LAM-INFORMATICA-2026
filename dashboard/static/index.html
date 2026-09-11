@@ -69,11 +69,17 @@
                   <label>Neutre % <input name="prob_notizia_neutra" type="text" inputmode="decimal" data-number-input data-percent-group="news" data-noise-setting data-min="0" data-max="100" data-step="1"></label>
                   <label>Negative % <input name="prob_notizia_negativa" type="text" inputmode="decimal" data-number-input data-percent-group="news" data-noise-setting data-min="0" data-max="100" data-step="1"></label>
                 </div>
-                <p class="percent-status" data-percent-status="news"></p>
+                <div class="percent-row">
+                  <p class="percent-status" data-percent-status="news"></p>
+                  <button type="button" class="percent-balance" data-percent-balance="news" hidden>Bilancia a 100</button>
+                </div>
               </details>
             </div>
           </div>
-          <p class="percent-status" data-percent-status="trader-types"></p>
+          <div class="percent-row">
+            <p class="percent-status" data-percent-status="trader-types"></p>
+            <button type="button" class="percent-balance" data-percent-balance="trader-types" hidden>Bilancia a 100</button>
+          </div>
 
           <h2>Meccaniche avanzate</h2>
           <div class="trader-panel">
@@ -115,8 +121,8 @@
             <strong id="gini">-</strong>
           </article>
           <article class="metric">
-            <span>Buy / Sell</span>
-            <strong id="orders">-</strong>
+            <span>Seed usato</span>
+            <button type="button" id="seed-used" class="metric-action" title="Copia questo seed nel campo Seed a sinistra, per ripetere identica questa simulazione">-</button>
           </article>
         </div>
 
@@ -126,6 +132,7 @@
             <span id="status" role="status" aria-live="polite">Pronto</span>
           </div>
           <canvas id="price-chart" width="980" height="360" role="img" aria-label="Grafico del prezzo del bitcoin nel tempo">Il tuo browser non supporta la visualizzazione del grafico del prezzo.</canvas>
+          <p class="chart-note">Come si muove il prezzo del bitcoin, giorno dopo giorno, dal valore iniziale a quello raggiunto alla fine della simulazione.</p>
         </section>
 
         <section class="panel stats-panel">
@@ -173,6 +180,7 @@
             <div class="section-head">
               <h2>Ultimi giorni</h2>
             </div>
+            <p class="note">Notizia e prezzo esatti degli ultimi giorni. Gli ordini di acquisto/vendita giorno per giorno sono nel grafico "Volumi giornalieri".</p>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -180,8 +188,6 @@
                     <th>Giorno</th>
                     <th>Notizia</th>
                     <th>Prezzo</th>
-                    <th>Buy</th>
-                    <th>Sell</th>
                   </tr>
                 </thead>
                 <tbody id="days-table"></tbody>
@@ -219,6 +225,14 @@
         </section>
       </section>
     </main>
+
+    <div id="chart-lightbox" class="lightbox" hidden aria-hidden="true">
+      <div class="lightbox-inner" role="dialog" aria-modal="true" aria-label="Grafico ingrandito">
+        <button type="button" class="lightbox-close" aria-label="Chiudi">&times;</button>
+        <figcaption id="lightbox-caption"></figcaption>
+        <img id="lightbox-image" src="" alt="">
+      </div>
+    </div>
 
     <script src="/app.js"></script>
   </body>

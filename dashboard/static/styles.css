@@ -38,8 +38,20 @@ body {
   display: grid;
   grid-template-columns: minmax(300px, 360px) 1fr;
   gap: 18px;
-  min-height: 100vh;
+  height: 100vh;
   padding: 18px;
+  overflow: hidden;
+}
+
+/* Le due colonne scorrono in modo indipendente: ognuna occupa tutta
+   l'altezza della finestra e gestisce il proprio overflow verticale. */
+.controls,
+.workspace {
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
 }
 
 .panel,
@@ -52,9 +64,7 @@ body {
 
 .controls {
   padding: 18px;
-  align-self: start;
-  position: sticky;
-  top: 18px;
+  padding-right: 14px;
 }
 
 .brand {
@@ -173,6 +183,13 @@ input.is-invalid:focus {
   outline-color: rgba(255, 93, 87, 0.28);
 }
 
+.percent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .percent-status {
   min-height: 16px;
   margin-top: 7px;
@@ -183,6 +200,27 @@ input.is-invalid:focus {
 
 .percent-status.is-invalid {
   color: var(--red);
+}
+
+.percent-balance {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel-soft);
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.percent-balance:hover {
+  background: #111d1a;
+}
+
+.percent-balance:focus-visible {
+  outline: 2px solid rgba(0, 196, 140, 0.24);
+  outline-offset: 1px;
 }
 
 .trader-panel {
@@ -404,6 +442,7 @@ button[type="submit"] {
 
 .workspace {
   display: grid;
+  align-content: start;
   gap: 18px;
   min-width: 0;
 }
@@ -425,10 +464,38 @@ button[type="submit"] {
   text-transform: uppercase;
 }
 
-.metric strong {
+.metric strong,
+.metric-action {
   display: block;
   margin-top: 8px;
   font-size: 24px;
+}
+
+.metric-action {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  font-family: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.metric-action:hover,
+.metric-action:focus-visible {
+  color: var(--accent-dark);
+}
+
+.metric-action:focus-visible {
+  outline: 2px solid rgba(0, 196, 140, 0.24);
+  outline-offset: 2px;
+}
+
+.metric-action:disabled {
+  cursor: default;
+  color: var(--ink);
 }
 
 .chart-panel,
@@ -501,6 +568,91 @@ canvas {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #050908;
+  cursor: zoom-in;
+}
+
+.python-chart img:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chart-desc,
+.chart-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(2, 4, 3, 0.82);
+}
+
+.lightbox[hidden] {
+  display: none;
+}
+
+.lightbox-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(1100px, 96vw);
+  max-height: 92vh;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: auto;
+}
+
+.lightbox-inner figcaption {
+  padding-right: 34px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.lightbox-inner img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #050908;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.lightbox-close:hover {
+  background: #111d1a;
+}
+
+.lightbox-close:focus-visible {
+  outline: 2px solid rgba(0, 196, 140, 0.24);
+  outline-offset: 1px;
 }
 
 .split {
@@ -755,8 +907,22 @@ dd {
     grid-template-columns: 1fr;
   }
 
+  /* In colonna singola torna a scorrere l'intera pagina. */
+  .app-shell {
+    height: auto;
+    overflow: visible;
+  }
+
+  .controls,
+  .workspace {
+    max-height: none;
+    overflow-y: visible;
+    overscroll-behavior: auto;
+    padding-right: 0;
+  }
+
   .controls {
-    position: static;
+    padding: 18px;
   }
 
   .metric-row {

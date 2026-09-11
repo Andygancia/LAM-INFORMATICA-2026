@@ -73,7 +73,9 @@ function stepInput(input, direction) {
 }
 
 function readInputNumber(input) {
-  const value = Number(normalizeDecimalValue(input.value));
+  const raw = normalizeDecimalValue(input.value).trim();
+  if (raw === "") return null;
+  const value = Number(raw);
   return Number.isFinite(value) ? value : null;
 }
 
@@ -97,6 +99,7 @@ function validatePercentageGroups() {
   percentageGroups.forEach(({ id, label, enabledWhen }) => {
     const allInputs = [...form.querySelectorAll(`[data-percent-group="${id}"]`)];
     const status = form.querySelector(`[data-percent-status="${id}"]`);
+    const balanceButton = form.querySelector(`[data-percent-balance="${id}"]`);
 
     if (enabledWhen && !enabledWhen()) {
       allInputs.forEach((input) => {
@@ -107,6 +110,7 @@ function validatePercentageGroups() {
         status.textContent = "";
         status.classList.remove("is-invalid");
       }
+      if (balanceButton) balanceButton.hidden = true;
       return;
     }
 
@@ -134,6 +138,8 @@ function validatePercentageGroups() {
       status.classList.toggle("is-invalid", !isValid);
     }
 
+    if (balanceButton) balanceButton.hidden = isValid || hasNoActiveInputs;
+
     if (!isValid) {
       messages.push(
         hasNoActiveInputs
@@ -144,6 +150,41 @@ function validatePercentageGroups() {
   });
 
   return { valid: messages.length === 0, messages };
+}
+
+function balancePercentageGroup(id) {
+  const group = percentageGroups.find((entry) => entry.id === id);
+  if (group && group.enabledWhen && !group.enabledWhen()) return;
+
+  const inputs = [...form.querySelectorAll(`[data-percent-group="${id}"]`)].filter(
+    (input) => !input.disabled
+  );
+  if (!inputs.length) return;
+
+  const correnti = inputs.map((input) => {
+    const value = readInputNumber(input);
+    return value === null || value < 0 ? 0 : value;
+  });
+  const somma = correnti.reduce((acc, value) => acc + value, 0);
+  const obiettivo =
+    somma > 0
+      ? correnti.map((value) => (value / somma) * 100)
+      : inputs.map(() => 100 / inputs.length);
+
+  // Arrotonda agli interi mantenendo la somma esatta di 100.
+  const interi = obiettivo.map((value) => Math.floor(value));
+  const resto = 100 - interi.reduce((acc, value) => acc + value, 0);
+  const perFrazione = obiettivo
+    .map((value, indice) => ({ indice, frazione: value - Math.floor(value) }))
+    .sort((a, b) => b.frazione - a.frazione);
+  for (let k = 0; k < resto && perFrazione.length; k++) {
+    interi[perFrazione[k % perFrazione.length].indice] += 1;
+  }
+
+  inputs.forEach((input, indice) => {
+    input.value = String(interi[indice]);
+  });
+  validatePercentageGroups();
 }
 
 function syncTraderControls() {
@@ -259,6 +300,10 @@ simpleToggles.forEach((toggle) => {
   toggle.addEventListener("change", syncSimpleToggles);
 });
 
+form.querySelectorAll("[data-percent-balance]").forEach((button) => {
+  button.addEventListener("click", () => balancePercentageGroup(button.dataset.percentBalance));
+});
+
 async function loadDefaults() {
   resizeCanvas();
   try {
@@ -341,7 +386,7 @@ function renderResult(result) {
   changeEl.style.color =
     variazione > 0 ? "var(--accent)" : variazione < 0 ? "var(--red)" : "var(--ink)";
   document.querySelector("#gini").textContent = result.summary.gini_finale;
-  document.querySelector("#orders").textContent = `${result.summary.totale_compratori} / ${result.summary.totale_venditori}`;
+  renderSeedUsato(result.summary.seed_usato);
   drawChart(result.giorni.map((day) => day.prezzo));
   renderPythonCharts(result.grafici);
   renderStatistiche(result.statistiche_rendimenti, result.test_adf_prezzo);
@@ -363,19 +408,45 @@ function renderStatistiche(stat, adfPrezzo) {
     return;
   }
 
-  container.innerHTML = Object.entries(adfPrezzo.valori_critici)
-    .map(([livello, soglia]) => {
-      const rifiuta = adfPrezzo.rifiuta_ipotesi_random_walk[livello];
-      return `
-        <div class="adf-card ${rifiuta ? "rifiuta" : "non-rifiuta"}">
-          <span>Test ADF (prezzo) - livello ${livello}</span>
-          <strong>${rifiuta ? "Rifiuta random walk" : "Non rifiuta: unit root"}</strong>
-          <span>tau = ${adfPrezzo.statistica_tau} (soglia ${soglia})</span>
-        </div>
-      `;
-    })
-    .join("");
+  const rifiuta5 = adfPrezzo.rifiuta_ipotesi_random_walk["5%"];
+  const soglie = Object.entries(adfPrezzo.valori_critici)
+    .map(([livello, soglia]) => `${livello}: ${soglia}`)
+    .join("   ");
+  container.innerHTML = `
+    <div class="adf-card ${rifiuta5 ? "rifiuta" : "non-rifiuta"}">
+      <span>Test ADF sul prezzo (livello 5%)</span>
+      <strong>${rifiuta5 ? "Rifiuta il random walk" : "Non rifiuta: presenza di unit root"}</strong>
+      <span>tau = ${adfPrezzo.statistica_tau} — soglie critiche ${soglie}</span>
+    </div>
+  `;
 }
+
+// Descrizioni in linguaggio semplice, pensate per chi non ha basi di
+// statistica o finanza: spiegano cosa guardare nel grafico, non la formula.
+const DESCRIZIONI_GRAFICI = {
+  patrimonio_classi:
+    "Quanto vale in totale (contanti + bitcoin) ogni tipo di trader, giorno dopo giorno. Una linea che sale indica un gruppo che si sta arricchendo rispetto agli altri.",
+  performance_classi:
+    "Quanto ha guadagnato o perso in percentuale, in media, ogni tipo di trader rispetto al primo giorno. Sopra lo zero significa guadagno, sotto significa perdita.",
+  smart_vs_dumb:
+    "Raggruppa i trader in tre \"stili\": disciplinati (Smart), neutri (Normal) e impulsivi (Dumb), e mostra chi sta guadagnando di più nel tempo.",
+  rendimento_finale:
+    "Il guadagno o la perdita percentuale di ogni tipo di trader alla fine della simulazione. Barre sopra lo zero: guadagno; sotto: perdita.",
+  istogramma_rendimenti:
+    "Quante volte il prezzo ha fatto variazioni giornaliere di una certa entità. Se le code della distribuzione sono più alte della curva gialla (l'andamento \"normale\" teorico), vuol dire che i crolli o i rialzi estremi capitano più spesso di quanto ci si aspetterebbe: è un comportamento tipico dei mercati reali.",
+  acf_rendimenti:
+    "Verifica se le giornate di forte agitazione tendono a raggrupparsi nel tempo invece di essere isolate. Barre alte anche a distanza di più giorni (soprattutto quelle arancioni) indicano periodi di turbolenza che durano, non scossoni isolati.",
+  gini_nel_tempo:
+    "Segue giorno per giorno quanto la ricchezza è concentrata in pochi trader: più il valore si avvicina a 1, più pochi trader possiedono la maggior parte del denaro in circolazione.",
+  curva_lorenz:
+    "Mostra come è distribuita la ricchezza finale tra tutti i trader. Più la curva verde si allontana dalla linea tratteggiata (che rappresenterebbe una ricchezza uguale per tutti), più pochi trader possiedono la maggior parte del patrimonio.",
+  volumi_giornalieri:
+    "Quanti trader hanno comprato (verde, verso l'alto) e quanti hanno venduto (rosso, verso il basso) ogni giorno. Barre più alte indicano giornate di mercato più movimentate.",
+  offerta_bitcoin:
+    "Quanti bitcoin esistono in totale nel mercato nel tempo. Sale quando il mining è attivo, perché vengono \"creati\" nuovi bitcoin giorno dopo giorno.",
+  trader_attivi:
+    "Quante persone (trader) partecipano al mercato giorno dopo giorno. Sale quando è attivo l'ingresso di nuovi trader nel tempo.",
+};
 
 function renderPythonCharts(charts = {}) {
   const chartDefinitions = [
@@ -398,7 +469,8 @@ function renderPythonCharts(charts = {}) {
       ([key, title]) => `
         <figure class="python-chart">
           <figcaption>${title}</figcaption>
-          <img src="${charts[key]}" alt="${title}">
+          <img src="${charts[key]}" alt="${title}" tabindex="0" role="button" aria-label="Ingrandisci: ${title}">
+          <p class="chart-desc">${DESCRIZIONI_GRAFICI[key] || ""}</p>
         </figure>
       `
     )
@@ -496,6 +568,14 @@ function renderPopulation(counts) {
     .join("");
 }
 
+function renderSeedUsato(seedUsato) {
+  const seedButton = document.querySelector("#seed-used");
+  if (!seedButton) return;
+  const valido = Number.isFinite(seedUsato);
+  seedButton.textContent = valido ? String(seedUsato) : "-";
+  seedButton.disabled = !valido;
+}
+
 function renderTable(days) {
   document.querySelector("#days-table").innerHTML = days
     .map(
@@ -504,8 +584,6 @@ function renderTable(days) {
           <td>${day.giorno}</td>
           <td>${day.notizia}</td>
           <td>$${day.prezzo}</td>
-          <td>${day.compratori}</td>
-          <td>${day.venditori}</td>
         </tr>
       `
     )
@@ -522,6 +600,16 @@ resetButton.addEventListener("click", async () => {
   syncTraderControls();
   syncSimpleToggles();
   await runSimulation();
+});
+
+document.querySelector("#seed-used").addEventListener("click", (event) => {
+  const seedButton = event.currentTarget;
+  const seedInput = form.elements.seed;
+  if (!seedInput || seedButton.disabled) return;
+  seedInput.value = seedButton.textContent;
+  seedInput.dispatchEvent(new Event("input", { bubbles: true }));
+  seedInput.dispatchEvent(new Event("change", { bubbles: true }));
+  statusEl.textContent = `Seed ${seedButton.textContent} copiato a sinistra: premi "Avvia simulazione" per ripetere questa run`;
 });
 
 // --- Simulazioni multiple (Monte Carlo / sensitivity) ---
@@ -544,7 +632,7 @@ function renderMultirun(livelli) {
         .map(([nome, valore]) => `<tr><td>${nome}</td><td>${valore === null ? "-" : valore + "%"}</td></tr>`)
         .join("");
       const graficoFan = livello.grafico_fan_prezzo
-        ? `<figure class="python-chart"><figcaption>Prezzo medio (banda min-max tra le run)</figcaption><img src="${livello.grafico_fan_prezzo}" alt="Prezzo medio tra le run"></figure>`
+        ? `<figure class="python-chart"><figcaption>Prezzo medio (banda min-max tra le run)</figcaption><img src="${livello.grafico_fan_prezzo}" alt="Prezzo medio tra le run" tabindex="0" role="button" aria-label="Ingrandisci: prezzo medio tra le run"></figure>`
         : "";
       return `
         <article class="multirun-level">
@@ -557,8 +645,8 @@ function renderMultirun(livelli) {
           </div>
           <div class="chart-grid">
             ${graficoFan}
-            <figure class="python-chart"><figcaption>Smart vs Dumb, ogni punto e' una run</figcaption><img src="${livello.grafico_scatter_smart_dumb}" alt="Scatter smart vs dumb"></figure>
-            <figure class="python-chart"><figcaption>Differenza di rendimento (Smart - Dumb)</figcaption><img src="${livello.grafico_istogramma_differenza}" alt="Istogramma differenza smart dumb"></figure>
+            <figure class="python-chart"><figcaption>Smart vs Dumb, ogni punto e' una run</figcaption><img src="${livello.grafico_scatter_smart_dumb}" alt="Scatter smart vs dumb" tabindex="0" role="button" aria-label="Ingrandisci: scatter Smart vs Dumb"></figure>
+            <figure class="python-chart"><figcaption>Differenza di rendimento (Smart - Dumb)</figcaption><img src="${livello.grafico_istogramma_differenza}" alt="Istogramma differenza smart dumb" tabindex="0" role="button" aria-label="Ingrandisci: differenza di rendimento Smart - Dumb"></figure>
           </div>
         </article>
       `;
@@ -615,5 +703,69 @@ async function eseguiMultirun() {
 }
 
 multirunButton.addEventListener("click", eseguiMultirun);
+
+// --- Lightbox: clic (o Invio/Spazio) su un grafico per ingrandirlo ---
+
+const lightbox = document.querySelector("#chart-lightbox");
+const lightboxImage = document.querySelector("#lightbox-image");
+const lightboxCaption = document.querySelector("#lightbox-caption");
+const lightboxClose = lightbox?.querySelector(".lightbox-close");
+let elementoFocalizzatoPrimaLightbox = null;
+
+function apriLightbox(sorgente, didascalia) {
+  if (!lightbox || !sorgente) return;
+  lightboxImage.src = sorgente;
+  lightboxImage.alt = didascalia || "Grafico ingrandito";
+  lightboxCaption.textContent = didascalia || "";
+  elementoFocalizzatoPrimaLightbox =
+    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  lightbox.hidden = false;
+  lightbox.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  lightboxClose?.focus();
+}
+
+function chiudiLightbox() {
+  if (!lightbox || lightbox.hidden) return;
+  lightbox.hidden = true;
+  lightbox.setAttribute("aria-hidden", "true");
+  lightboxImage.removeAttribute("src");
+  document.body.style.overflow = "";
+  elementoFocalizzatoPrimaLightbox?.focus();
+}
+
+function graficoDaEvento(target) {
+  return target && target.closest ? target.closest(".python-chart img") : null;
+}
+
+function didascaliaGrafico(img) {
+  const testo = img.closest(".python-chart")?.querySelector("figcaption")?.textContent;
+  return testo ? testo.trim() : img.alt;
+}
+
+document.addEventListener("click", (event) => {
+  const img = graficoDaEvento(event.target);
+  if (img) {
+    apriLightbox(img.currentSrc || img.src, didascaliaGrafico(img));
+    return;
+  }
+  if (event.target === lightbox || (event.target.closest && event.target.closest(".lightbox-close"))) {
+    chiudiLightbox();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    chiudiLightbox();
+    return;
+  }
+  if (event.key === "Enter" || event.key === " ") {
+    const attivo = document.activeElement;
+    if (attivo && attivo.matches && attivo.matches(".python-chart img")) {
+      event.preventDefault();
+      apriLightbox(attivo.currentSrc || attivo.src, didascaliaGrafico(attivo));
+    }
+  }
+});
 
 loadDefaults();

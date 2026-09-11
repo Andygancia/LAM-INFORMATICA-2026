@@ -48,7 +48,7 @@
             <dd>Costo implicito di ogni scambio: chi compra paga un po' sopra il prezzo di mercato, chi vende incassa un po' sotto. Uno spread piu alto riduce leggermente il rendimento di tutti i trader, in particolare di chi scambia spesso (come i Chartist).</dd>
 
             <dt>Seed</dt>
-            <dd>Numero usato per rendere ripetibile la simulazione. Con lo stesso seed e gli stessi parametri ottieni lo stesso risultato.</dd>
+            <dd>Numero usato per rendere ripetibile la simulazione. Con lo stesso seed e gli stessi parametri ottieni lo stesso risultato. Se lo lasci vuoto, la dashboard ne genera uno casuale a ogni run e lo mostra nella metrica "Seed usato" (in alto a destra, sopra il grafico del prezzo): un clic sul numero lo ricopia in questo campo, cosi puoi rilanciare la stessa identica simulazione.</dd>
           </dl>
         </article>
 
@@ -67,7 +67,7 @@
             <dt>Smart %</dt>
             <dd>Percentuale desiderata di SmartTrader. Questi agenti sono contrarian e disciplinati: comprano quando il prezzo e sceso sotto la sua media recente e vendono quando e salito sopra.</dd>
           </dl>
-          <p class="note">Le percentuali delle categorie attive devono sommare esattamente a 100: se una categoria e disattivata viene esclusa dal totale, e la simulazione non parte finche la somma non torna a 100.</p>
+          <p class="note">Le quattro categorie (Random, Noise, Chartist, Smart) sono contate tutte insieme e le percentuali di quelle attive devono sommare esattamente a 100: se una categoria e disattivata viene esclusa dal totale. Quando la somma non e 100 compare il pulsante "Bilancia a 100" che riscala automaticamente i valori mantenendone le proporzioni.</p>
         </article>
 
         <article class="panel guide-card">
@@ -106,11 +106,9 @@
             <dd>Differenza percentuale tra prezzo finale e prezzo iniziale.</dd>
 
             <dt>Gini finale</dt>
-            <dd>Indice di disuguaglianza della ricchezza finale dei trader. Vicino a 0 significa ricchezza distribuita in modo simile; piu si avvicina a 1, piu la ricchezza e concentrata.</dd>
-
-            <dt>Buy / Sell</dt>
-            <dd>Totale degli ordini di acquisto e vendita decisi dai trader durante tutta la simulazione.</dd>
+            <dd>Indice di disuguaglianza della ricchezza finale dei trader. Vicino a 0 significa ricchezza distribuita in modo simile; piu si avvicina a 1, piu la ricchezza e concentrata. La forma completa della distribuzione e nel grafico "Curva di Lorenz".</dd>
           </dl>
+          <p class="note">Gli ordini di acquisto e vendita giorno per giorno sono nel grafico "Volumi giornalieri". La tabella "Ultimi giorni" riporta notizia e prezzo esatti delle ultime giornate. Ogni grafico si puo ingrandire con un clic.</p>
         </article>
 
         <article class="panel guide-card wide">
@@ -160,10 +158,10 @@
             <dd>I periodi di forte volatilita tendono a raggrupparsi nel tempo. Si verifica confrontando l'autocorrelazione dei rendimenti grezzi (che deve restare vicina a zero) con quella dei rendimenti assoluti (che deve restare significativamente positiva anche a lag piu alti). Il grafico "Autocorrelazione" mostra entrambe le serie fino al ventesimo giorno di ritardo.</dd>
 
             <dt>Unit root (test ADF)</dt>
-            <dd>Un prezzo che segue una "passeggiata casuale" (random walk) non ha un livello a cui ritorna nel tempo. Il test di Dickey-Fuller aumentato verifica proprio questo: se il valore della statistica tau e sopra le soglie critiche (mostrate nelle schede colorate), non si puo rifiutare l'ipotesi di random walk - esattamente cio che il paper osserva sia sui prezzi reali di Bitcoin sia su quelli simulati.</dd>
+            <dd>Un prezzo che segue una "passeggiata casuale" (random walk) non ha un livello a cui ritorna nel tempo. Il test di Dickey-Fuller aumentato verifica proprio questo: la scheda riporta l'esito al livello del 5% (con tutte le soglie critiche 1%/5%/10% indicate accanto). Se la statistica tau resta sopra la soglia non si puo rifiutare l'ipotesi di random walk - esattamente cio che il paper osserva sia sui prezzi reali di Bitcoin sia su quelli simulati.</dd>
 
-            <dt>Gini nel tempo e curva di Lorenz</dt>
-            <dd>Oltre alle tre proprieta del paper, la dashboard traccia anche come evolve la disuguaglianza di ricchezza giorno per giorno (indice di Gini) e la mostra visivamente con la curva di Lorenz: piu la curva si allontana dalla diagonale, piu la ricchezza e concentrata in pochi trader.</dd>
+            <dt>Disuguaglianza di ricchezza (curva di Lorenz)</dt>
+            <dd>La curva di Lorenz mostra come e distribuita la ricchezza finale: piu si allontana dalla diagonale, piu e concentrata in pochi trader. L'indice di Gini sintetizza questa curva in un numero (metrica "Gini finale"). Con popolazione e bitcoin totali fissi la disuguaglianza e decisa quasi solo dalla distribuzione Pareto iniziale, quindi resta pressoche costante; il grafico dell'evoluzione giorno per giorno compare solo quando il mining o l'ingresso di nuovi trader la fanno effettivamente variare.</dd>
           </dl>
         </article>
 
