@@ -1,0 +1,16 @@
+Fonte dei dati: Blockchain.com, grafico "Market Price (USD)"
+Descrizione della fonte: "Average USD market price across major bitcoin exchanges."
+(prezzo medio giornaliero in USD sui principali exchange, non il massimo intraday)
+
+Pagina del grafico: https://www.blockchain.com/explorer/charts/market-price
+URL esatto usato per il download (API pubblica, JSON):
+https://api.blockchain.info/charts/market-price?timespan=all&format=json&sampled=false
+
+Data di download: 23.10.2026
+Frequenza: giornaliera, nessun giorno mancante
+Periodo nel file: 03.01.2009 - 23.10.2026 (6503 righe)
+Periodo con prezzo > 0: 18.08.2010 - 23.10.2026 (5911 righe)
+Le righe dal 03.01.2009 al 17.08.2010 hanno prezzo 0 nella fonte (nessun mercato);
+sono state lasciate come scaricate e vengono scartate da grafico_prezzo.py.
+
+Conversione: timestamp Unix (UTC) -> data ISO (AAAA-MM-GG); prezzi non modificati.
