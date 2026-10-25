@@ -1,0 +1,124 @@
+\section{Il modello}
+\label{sec:modello}
+
+Il simulatore riproduce un piccolo mercato in cui una popolazione di trader compra e vende bitcoin in cambio di dollari. Il tempo avanza a passi di un giorno, come nel modello di Cocco, Concas e Marchesi, che simula 830 giorni di mercato tra il gennaio 2012 e l'aprile 2014 \cite{paper_riferimento}. Ogni giorno i trader prendono le loro decisioni e alla fine della giornata il prezzo viene aggiornato. In questa sezione descriviamo il modello senza fare riferimento al codice, che è presentato nella sezione~\ref{sec:implementazione}; le differenze rispetto al paper sono raccolte nella sezione~\ref{sec:differenze}.
+
+\subsection{Un giorno di simulazione}
+
+Ogni giorno si ripetono gli stessi quattro passi, riassunti nella figura~\ref{fig:giorno}. Per prima cosa viene estratta la notizia del giorno, che può essere positiva, neutra o negativa. Poi ogni trader decide se è attivo e, se lo è, applica la propria regola per scegliere se comprare, vendere o non fare nulla. Gli ordini di chi compra o vende vengono eseguiti subito. Alla fine si contano i compratori e i venditori, e da questo conteggio si calcola il prezzo del giorno successivo.
+
+Tutti i trader dello stesso giorno decidono e scambiano allo stesso prezzo, quello del giorno precedente: il prezzo cambia una sola volta, alla fine della giornata, e il nuovo valore è quello che i trader vedranno il giorno dopo.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  passo/.style={draw, rounded corners, align=center, font=\footnotesize, inner sep=5pt, text width=2.6cm},
+  freccia/.style={->, thick}
+]
+\node[passo] (n) {\textbf{1. Notizia}\\positiva, neutra\\o negativa};
+\node[passo, right=0.6cm of n] (d) {\textbf{2. Decisioni}\\attivo? compra,\\vende o nulla};
+\node[passo, right=0.6cm of d] (e) {\textbf{3. Esecuzione}\\10\% delle risorse,\\$\pm$ metà spread};
+\node[passo, right=0.6cm of e] (p) {\textbf{4. Prezzo}\\$P_{t+1}$ dallo\\squilibrio};
+\draw[freccia] (n) -- (d);
+\draw[freccia] (d) -- (e);
+\draw[freccia] (e) -- (p);
+\draw[freccia] (p.south) -- ++(0,-0.5) -| node[pos=0.25, below, font=\footnotesize] {giorno successivo} (n.south);
+\end{tikzpicture}
+\caption{I quattro passi di un giorno di simulazione. Il prezzo calcolato al passo 4 è quello su cui i trader decidono il giorno successivo.}
+\label{fig:giorno}
+\end{figure}
+
+\subsection{La popolazione e la ricchezza iniziale}
+
+All'inizio della simulazione il mercato contiene $N$ trader, 100 con i parametri predefiniti. Il tipo di ciascuno viene estratto a caso secondo le percentuali scelte nella dashboard, che normalmente sono il 50\% di random trader, il 20\% di chartist, il 15\% di noise trader e il 15\% di smart trader. Le percentuali sono quindi probabilità, non quote esatte: con il seed 42 e i parametri predefiniti, per esempio, i trader sono 49 random, 14 chartist, 19 noise e 18 smart. La composizione effettiva cambia da una simulazione all'altra, ed è uno dei motivi per cui ogni esperimento va ripetuto molte volte (sezione~\ref{sec:impostazione}). Anche nel paper il tipo di ogni trader è estratto a caso, con una probabilità del 70\% di essere random e del 30\% di essere chartist \cite{paper_riferimento}.
+
+Il cash totale, normalmente 400\,000 dollari, e i bitcoin totali, normalmente 80\,000, sono divisi tra i trader in modo diseguale. Per ogni trader si estrae un numero da una distribuzione di Pareto con parametro $\beta$, e ciascuno riceve una parte del totale proporzionale al proprio numero. Le estrazioni per il cash e per i bitcoin sono separate: un trader può quindi ricevere molti dollari e pochissimi bitcoin, o il contrario.
+
+Il parametro $\beta$ stabilisce quanto la ricchezza è concentrata. Più $\beta$ è piccolo, più una grande parte del totale finisce a pochi trader. Lo si vede dall'indice di Gini, che vale 0 quando tutti possiedono la stessa ricchezza e si avvicina a 1 quando quasi tutta la ricchezza appartiene a un solo trader. Con il seed 42 e gli altri parametri predefiniti, l'indice di Gini a fine simulazione vale 0,965 con $\beta = 0{,}3$, 0,645 con $\beta = 1$ e 0,435 con $\beta = 3$. Il valore predefinito $\beta = 1$ riprende la scelta del paper, dove cash e bitcoin seguono una legge di potenza con esponente 1, la cosiddetta legge di Zipf \cite{paper_riferimento}.
+
+\subsection{I quattro tipi di trader}
+
+Ogni giorno solo una parte dei trader è attiva: ciascuno lo è con una probabilità che dipende dal suo tipo. Un trader attivo applica la propria regola di decisione; uno inattivo resta fermo fino al giorno dopo.
+
+Il \textit{random trader} è attivo con probabilità del 10\% e, quando lo è, compra o vende con la stessa probabilità. Rappresenta chi possiede bitcoin per motivi propri, per esempio per diversificare i risparmi o perché ha bisogno di contanti, e non per speculare. Nel paper questo tipo di trader è quello che dà stabilità al prezzo \cite{paper_riferimento}.
+
+Il \textit{chartist} è attivo con probabilità del 50\%. Confronta il prezzo di oggi con quello del giorno prima: se è salito di più dell'1\% compra, se è sceso di più dell'1\% vende, altrimenti non fa nulla. È lo speculatore che scommette che la tendenza continui. Il primo giorno della simulazione non può operare, perché non ha ancora un prezzo precedente con cui confrontarsi.
+
+Il \textit{noise trader} è attivo con probabilità del 60\% e decide in tre tappe. Prima di tutto può essere preso dal panico e vendere: ogni noise trader ha una propria probabilità di panico, estratta all'inizio tra il 5 e il 20\%. Se non vende per panico, guarda la notizia del giorno: se è positiva compra, se è negativa vende, ma solo con una probabilità pari alla sua sensibilità alle notizie, anche questa personale e compresa tra il 50 e il 90\%. Se nemmeno la notizia lo convince, compra o vende a caso. Un noise trader attivo, quindi, fa sempre qualcosa.
+
+Lo \textit{smart trader} è attivo con probabilità del 35\%. Calcola la media del prezzo negli ultimi 20 giorni e la confronta con il prezzo attuale: compra se il prezzo è più basso della media di oltre il 3\%, vende se è più alto di oltre il 3\%, altrimenti non fa nulla. È una strategia \textit{contrarian}: lo smart trader compra quando il prezzo è sceso, cioè proprio quando un chartist vende.
+
+Alcuni di questi valori vengono dal paper. Le probabilità di essere attivi del random trader e del chartist, 0,1 e 0,5, sono le stesse usate da Cocco, Concas e Marchesi, che le giustificano così: i chartist operano per speculare, seguono da vicino il prezzo e sono quindi più pronti a inserire ordini \cite{paper_riferimento}. Dal paper vengono anche i valori iniziali predefiniti del mercato: 100 trader, 80\,000 bitcoin, un prezzo iniziale di 5 dollari e 400\,000 dollari di cash. Nella Tabella~1 del paper corrispondono al mercato reale del gennaio 2012 ridotto a un centesimo \cite{paper_riferimento}. Gli altri valori li abbiamo scelti noi: la soglia dell'1\% dei chartist, le probabilità del noise trader, il 35\%, i 20 giorni e il 3\% dello smart trader.
+
+\begin{aggiunte}
+\begin{itemize}
+  \item Per ciascuno dei valori scelti da voi, come e perché l'avete scelto
+        (prove con valori diversi, un ragionamento, un confronto con il
+        paper). Se un valore è stato scelto senza prove, scrivetelo: va poi
+        ripreso tra i limiti del capitolo~\ref{ch:conclusioni}.
+\end{itemize}
+\end{aggiunte}
+
+La tabella~\ref{tab:trader} riassume i quattro tipi.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lcp{6.2cm}l@{}}
+\toprule
+Tipo & Attivo & Regola & Gruppo \\
+\midrule
+Random   & 10\% & compra o vende a caso, con la stessa probabilità & Normal \\
+Chartist & 50\% & compra se il prezzo è salito di oltre l'1\% rispetto al giorno prima, vende se è sceso di oltre l'1\% & Dumb \\
+Noise    & 60\% & vende per panico (5--20\%); altrimenti segue la notizia (sensibilità 50--90\%); altrimenti compra o vende a caso & Dumb \\
+Smart    & 35\% & compra se il prezzo è oltre il 3\% sotto la media degli ultimi 20 giorni, vende se è oltre il 3\% sopra & Smart \\
+\bottomrule
+\end{tabular}
+\caption{I quattro tipi di trader del simulatore: probabilità di essere attivi in un giorno, regola di decisione e gruppo psicologico.}
+\label{tab:trader}
+\end{table}
+
+\subsection{I gruppi Smart, Normal e Dumb}
+
+Per confrontare i risultati, i quattro tipi sono riuniti in tre gruppi psicologici, con i nomi usati da Cattaneo e Bartoli nel loro lavoro di maturità \cite{cattaneo}. I random trader formano il gruppo Normal: non speculano e comprano o vendono per ragioni che non dipendono dal prezzo. Chartist e noise trader formano il gruppo Dumb, anche se per motivi diversi. Il chartist compra dopo un rialzo e vende dopo un ribasso, cioè compra quando il prezzo è già salito e vende quando è già sceso: insegue il mercato invece di valutarlo, come chi si lascia trascinare dal comportamento degli altri (sezione~\ref{sec:psicologia}). Il noise trader reagisce alle notizie e al panico, senza alcun calcolo. Gli smart trader formano da soli il gruppo Smart, perché seguono una regola fissa e disciplinata, nello spirito di quanto descrive Douglas \cite{douglas}.
+
+I nomi dei gruppi descrivono il modo di decidere, non il risultato. La regola dello smart trader non è stata regolata per farlo vincere: se guadagna più degli altri lo devono mostrare le simulazioni (sezione~\ref{sec:smartdumb}).
+
+\subsection{Le notizie e la formazione del prezzo}
+
+Ogni giorno la notizia è positiva, neutra o negativa, normalmente con probabilità del 10, dell'80 e del 10\%. La notizia ha due effetti: guida le decisioni dei noise trader e sposta direttamente il prezzo dell'1,5\% verso l'alto o verso il basso. Quando i noise trader sono esclusi dalla simulazione, la notizia è sempre neutra. Disattivarli toglie quindi anche gli shock delle notizie, e negli esperimenti che cambiano i tipi di trader va tenuto presente che cambiano due cose insieme.
+
+Il prezzo del giorno successivo si calcola con la formula
+\[
+  P_{t+1} = P_t \left( 1 + \lambda\,\frac{C_t - V_t}{N} + s_t + \varepsilon_t \right),
+\]
+dove:
+\begin{itemize}
+  \item $P_t$ è il prezzo del giorno $t$ e $P_{t+1}$ quello del giorno successivo;
+  \item $C_t$ e $V_t$ sono il numero di trader che quel giorno hanno comprato e il numero di quelli che hanno venduto;
+  \item $N$ è il numero di trader presenti nel mercato; dividendo per $N$, lo squilibrio $(C_t - V_t)/N$ diventa una frazione compresa tra $-1$ e $1$, che non dipende dalla grandezza della popolazione;
+  \item $\lambda$ è l'impatto della domanda e dell'offerta, normalmente 0,08: stabilisce quanto lo squilibrio sposta il prezzo;
+  \item $s_t$ è l'effetto della notizia: $+0{,}015$ se è positiva, $0$ se è neutra, $-0{,}015$ se è negativa;
+  \item $\varepsilon_t$ è un rumore casuale, estratto in modo uniforme tra $-0{,}01$ e $0{,}01$, che rappresenta tutto ciò che il modello non descrive.
+\end{itemize}
+Il prezzo non può scendere sotto 0,01 dollari.
+
+Un esempio aiuta a leggere la formula. Se il prezzo è di 5 dollari, su 100 trader 20 comprano e 10 vendono, la notizia è neutra e il rumore è nullo, lo squilibrio vale $10/100 = 0{,}1$ e il prezzo del giorno dopo è $5 \times (1 + 0{,}08 \times 0{,}1) = 5{,}04$ dollari. Con $\lambda = 0$ lo squilibrio non avrebbe alcun effetto, e il prezzo si muoverebbe solo per le notizie e per il rumore.
+
+Il principio è lo stesso del paper: quando prevalgono gli acquisti il prezzo sale, quando prevalgono le vendite scende \cite{paper_riferimento}. Il meccanismo, invece, è diverso. Nel paper il prezzo nasce dall'incrocio degli ordini in un order book, come su un vero \textit{exchange} (sezione~\ref{sec:exchange}); nel nostro modello è calcolato da una formula sul numero di compratori e di venditori.
+
+\subsection{L'esecuzione degli ordini}
+
+Chi decide di comprare spende il 10\% del proprio cash, chi decide di vendere cede il 10\% dei propri bitcoin. Lo scambio avviene al prezzo del giorno, corretto di metà dello spread bid/ask: il compratore paga un po' di più, il venditore riceve un po' di meno. Con lo spread predefinito dello 0,4\% e un prezzo di 5 dollari, chi compra paga 5,01 dollari per bitcoin e chi vende ne riceve 4,99. La differenza è il costo dello scambio.
+
+Nel modello c'è sempre qualcuno disposto a fare da controparte: ogni ordine viene eseguito per intero, anche se nello stesso giorno tutti vogliono vendere. È un'ipotesi semplificativa. Nel paper, al contrario, un ordine che non trova una controparte compatibile resta in attesa nell'order book e può scadere \cite{paper_riferimento}.
+
+Dalla formula del prezzo discende la proprietà più importante del modello: lo squilibrio conta le persone, non le quantità. Un trader con un milione di dollari pesa sul prezzo esattamente quanto uno che ne possiede dieci. Per questo la ricchezza iniziale e lo spread modificano i patrimoni dei trader, ma non l'andamento del prezzo. Lo abbiamo verificato ripetendo la simulazione con il seed 42 e cambiando un parametro alla volta: con uno spread dello 0 o del 5\%, con $\beta$ pari a 0,3 o a 3 e con un cash totale dieci volte più grande, la serie dei prezzi resta identica giorno per giorno, mentre cambia la distribuzione della ricchezza tra i trader.
+
+\subsection{Le meccaniche opzionali}
+
+Due meccaniche si possono attivare dalla dashboard e sono spente nella configurazione predefinita.
+
+Con il \textit{mining} attivo, ogni giorno un random trader estratto a caso riceve una quantità fissa di nuovi bitcoin, normalmente 2, e il totale dei bitcoin in circolazione cresce. È una versione molto semplificata del mining reale descritto nella sezione~\ref{sec:mining}: non ci sono calcoli né difficoltà, e la ricompensa non si dimezza mai (sezione~\ref{sec:scarsita}). Anche il paper non modella il processo di mining. Aggiunge ogni giorno una quantità di bitcoin pari a quella estratta nella realtà e la distribuisce a una parte dei random trader, in proporzione a quanti ne possiedono già. Gli autori danno i nuovi bitcoin solo ai random trader perché i miner guadagnano mettendo a disposizione potenza di calcolo, non speculando sul prezzo \cite{paper_riferimento}; abbiamo seguito lo stesso criterio. Il mining non compare nella formula del prezzo: fa crescere i bitcoin in circolazione, ma non sposta direttamente il prezzo.
+
+Con l'\textit{ingresso di nuovi trader} attivo, ogni giorno entra nel mercato un numero casuale di trader, in media uno al giorno. I nuovi arrivati sono sempre random trader, non possiedono bitcoin e ricevono una somma di cash compresa tra la metà e una volta e mezza il cash medio iniziale: con i parametri predefiniti, tra 2000 e 6000 dollari. A differenza del mining, questa meccanica cambia il prezzo, perché fa crescere $N$ e la quota di random trader: lo stesso numero di chartist o di noise trader pesa così sempre meno sullo squilibrio. Nel paper i nuovi trader entrano seguendo il numero di indirizzi attivi nella blockchain, possono essere sia random sia chartist, e i trader possono anche lasciare il mercato vendendo tutti i loro bitcoin \cite{paper_riferimento}. Nel nostro modello nessun trader esce.

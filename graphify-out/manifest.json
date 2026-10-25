@@ -1,0 +1,140 @@
+{
+  "checkpoint_1/LAM-originale/dashboard/app.py": {
+    "mtime": 1788892612.237936,
+    "seen": 1792788357.878137,
+    "ast_hash": "cd07c7a655f4c12e17fc180b1160b391",
+    "semantic_hash": "cd07c7a655f4c12e17fc180b1160b391"
+  },
+  "checkpoint_1/LAM-originale/dashboard/simulation.py": {
+    "mtime": 1788892612.2355833,
+    "seen": 1792788357.878148,
+    "ast_hash": "6b801cd1ba989e3fc99e6cbedc8de050",
+    "semantic_hash": "6b801cd1ba989e3fc99e6cbedc8de050"
+  },
+  "checkpoint_1/LAM-originale/dashboard/static/app.js": {
+    "mtime": 1788892612.2320924,
+    "seen": 1792788357.8781528,
+    "ast_hash": "8735973789fdce40941865247e85ed8b",
+    "semantic_hash": "8735973789fdce40941865247e85ed8b"
+  },
+  "dashboard/app.py": {
+    "mtime": 1788894168.9860573,
+    "seen": 1792788357.878156,
+    "ast_hash": "fe8ea1b7a80c1209e869a0da0c17c55a",
+    "semantic_hash": "fe8ea1b7a80c1209e869a0da0c17c55a"
+  },
+  "dashboard/simulation.py": {
+    "mtime": 1789122563.037826,
+    "seen": 1792788357.878159,
+    "ast_hash": "8ed485f622df49db8441f38563165ccf",
+    "semantic_hash": "8ed485f622df49db8441f38563165ccf"
+  },
+  "dashboard/static/app.js": {
+    "mtime": 1789122616.0981727,
+    "seen": 1792788357.878161,
+    "ast_hash": "ae2c0e62ebb0314a099658c42c926166",
+    "semantic_hash": "ae2c0e62ebb0314a099658c42c926166"
+  },
+  "checkpoint_1/LAM-originale/dashboard/informazioni.txt": {
+    "mtime": 1788892612.240253,
+    "seen": 1792788357.8781629,
+    "ast_hash": "a69d39ba85b23731f6462fa6f8a8ed62",
+    "semantic_hash": "a69d39ba85b23731f6462fa6f8a8ed62"
+  },
+  "checkpoint_1/LAM-originale/dashboard/static/guida.html": {
+    "mtime": 1788892612.2282317,
+    "seen": 1792788357.878165,
+    "ast_hash": "bd64ed65afa571677c8894e4a4623254",
+    "semantic_hash": "bd64ed65afa571677c8894e4a4623254"
+  },
+  "checkpoint_1/LAM-originale/dashboard/static/index.html": {
+    "mtime": 1788892612.2250912,
+    "seen": 1792788357.8781672,
+    "ast_hash": "89d42084e161ec93263161bd19c98bf1",
+    "semantic_hash": "89d42084e161ec93263161bd19c98bf1"
+  },
+  "checkpoint_1/LAM-originale/requirements.txt": {
+    "mtime": 1788892612.2755463,
+    "seen": 1792788357.878169,
+    "ast_hash": "e662c17749b1bd9358cd1ef11b51f09b",
+    "semantic_hash": "e662c17749b1bd9358cd1ef11b51f09b"
+  },
+  "checkpoint_1/LEGGIMI_RIPRISTINO.txt": {
+    "mtime": 1788892612.2836761,
+    "seen": 1792788357.878172,
+    "ast_hash": "82223b1809d942918c931d66a240fd93",
+    "semantic_hash": "82223b1809d942918c931d66a240fd93"
+  },
+  "dashboard/static/guida.html": {
+    "mtime": 1789122624.0613832,
+    "seen": 1792788357.878174,
+    "ast_hash": "eb514309b7328c4b0e997d84ecf81eb5",
+    "semantic_hash": "eb514309b7328c4b0e997d84ecf81eb5"
+  },
+  "dashboard/static/index.html": {
+    "mtime": 1789122574.0358253,
+    "seen": 1792788357.878176,
+    "ast_hash": "fd574b19a0d116b08d2feb9b46cb6f70",
+    "semantic_hash": "fd574b19a0d116b08d2feb9b46cb6f70"
+  },
+  "documenti/guida-progetto-e-dashboard.md": {
+    "mtime": 1789036222.84133,
+    "seen": 1792788357.8781781,
+    "ast_hash": "8be82dc1afa3e29d3baf94ade32682c9",
+    "semantic_hash": "8be82dc1afa3e29d3baf94ade32682c9"
+  },
+  "documenti/report-migliorie-dashboard.md": {
+    "mtime": 1788894793.251321,
+    "seen": 1792788357.87818,
+    "ast_hash": "cb7f62e0a2cb731419d33b918ed3dcc9",
+    "semantic_hash": "cb7f62e0a2cb731419d33b918ed3dcc9"
+  },
+  "requirements.txt": {
+    "mtime": 1788891153.59902,
+    "seen": 1792788357.878182,
+    "ast_hash": "e662c17749b1bd9358cd1ef11b51f09b",
+    "semantic_hash": "e662c17749b1bd9358cd1ef11b51f09b"
+  },
+  "checkpoint_1/LAM-documenti-originale/LAM.pdf": {
+    "mtime": 1788892612.0184853,
+    "seen": 1792788357.8781838,
+    "ast_hash": "c3bb303b6c09ba7bed0b7fb169cff488",
+    "semantic_hash": "c3bb303b6c09ba7bed0b7fb169cff488"
+  },
+  "checkpoint_1/LAM-documenti-originale/esempio-progettoLAM.pdf": {
+    "mtime": 1788892612.2071466,
+    "seen": 1792788357.878186,
+    "ast_hash": "07ec5ee8a586a59b7a0fbca19dede2c5",
+    "semantic_hash": "07ec5ee8a586a59b7a0fbca19dede2c5"
+  },
+  "checkpoint_1/LAM-documenti-originale/file bitcoin.pdf": {
+    "mtime": 1788892612.0021899,
+    "seen": 1792788357.8781881,
+    "ast_hash": "5612b0789afc03816f7e905f834b58ce",
+    "semantic_hash": "5612b0789afc03816f7e905f834b58ce"
+  },
+  "documenti/bibliografia-artificial-financial-market.pdf": {
+    "mtime": 1788892618.6354728,
+    "seen": 1792788357.87819,
+    "ast_hash": "5612b0789afc03816f7e905f834b58ce",
+    "semantic_hash": "5612b0789afc03816f7e905f834b58ce"
+  },
+  "documenti/confronto-order-book-vs-meccanismo-attuale.pdf": {
+    "mtime": 1790936731.9858632,
+    "seen": 1792788357.878193,
+    "ast_hash": "1ab03352043edb71f85926340711f98b",
+    "semantic_hash": "1ab03352043edb71f85926340711f98b"
+  },
+  "documenti/esempio-progetto-LAM.pdf": {
+    "mtime": 1788892618.527531,
+    "seen": 1792788357.878195,
+    "ast_hash": "07ec5ee8a586a59b7a0fbca19dede2c5",
+    "semantic_hash": "07ec5ee8a586a59b7a0fbca19dede2c5"
+  },
+  "documenti/programma-di-lavoro.pdf": {
+    "mtime": 1788892618.3772905,
+    "seen": 1792788357.878198,
+    "ast_hash": "c3bb303b6c09ba7bed0b7fb169cff488",
+    "semantic_hash": "c3bb303b6c09ba7bed0b7fb169cff488"
+  }
+}
